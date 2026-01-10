@@ -185,7 +185,11 @@
         const App = () => {
             const [activeTab, setActiveTab] = useState('calendar');
             const [currentDate, setCurrentDate] = useState(new Date()); 
+            
+            // STATE DATA
             const [campaigns, setCampaigns] = useState([]);
+            const [kpiData, setKpiData] = useState([]); // NY: KPI DATA
+
             const [loading, setLoading] = useState(true);
             const [saving, setSaving] = useState(false);
             const [isDataLoaded, setIsDataLoaded] = useState(false);
@@ -217,8 +221,13 @@
                     const res = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, { headers: { 'X-Master-Key': JSONBIN_API_KEY } });
                     if (res.ok) {
                         const json = await res.json();
+                        // HENT BÅDE CAMPAIGNS OG KPI DATA
                         const loadedCampaigns = json.record && Array.isArray(json.record.campaigns) ? json.record.campaigns : [];
+                        const loadedKpiData = json.record && Array.isArray(json.record.kpiData) ? json.record.kpiData : [];
+                        
                         setCampaigns(loadedCampaigns);
+                        setKpiData(loadedKpiData);
+                        
                         setIsDataLoaded(true); 
                     } else { 
                         console.error("Feil ved lasting:", res.status);
@@ -231,14 +240,21 @@
                 finally { setLoading(false); }
             };
 
-            const saveData = async (newCampaigns) => {
+            const saveData = async (newCampaigns, newKpiData) => {
                 if (!isDataLoaded) return;
                 setSaving(true);
+                // Bruk eksisterende state hvis argumenter mangler
+                const dataToSave = {
+                    campaigns: newCampaigns || campaigns,
+                    kpiData: newKpiData || kpiData,
+                    updatedAt: new Date()
+                };
+
                 try {
                     await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY },
-                        body: JSON.stringify({ campaigns: newCampaigns, updatedAt: new Date() })
+                        body: JSON.stringify(dataToSave)
                     });
                 } catch (e) { console.error("Save error:", e); } 
                 finally { setSaving(false); }
@@ -246,10 +262,27 @@
 
             useEffect(() => { loadData(); }, []);
             
+            // OPPDATERINGS-FUNKSJONER
             const updateCampaigns = (newData) => { 
                 setCampaigns(newData); 
-                saveData(newData); 
+                saveData(newData, null); // Beholder nåværende kpiData
             };
+            
+            // NYE HANDLERS FOR KPI
+            const handleAddKpi = (newRow) => {
+                const newData = [...kpiData, newRow];
+                setKpiData(newData);
+                saveData(null, newData); // Beholder nåværende campaigns
+            };
+
+            const handleDeleteKpi = (idToDelete) => {
+                if (confirm('Er du sikker på at du vil slette denne linjen?')) {
+                    const newData = kpiData.filter(item => item.id !== idToDelete);
+                    setKpiData(newData);
+                    saveData(null, newData);
+                }
+            };
+
 
             const toggleFilter = (type) => {
                 setVisibleTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
@@ -262,10 +295,16 @@
                 reader.onload = (e) => {
                     try {
                         const content = JSON.parse(e.target.result);
-                        if (Array.isArray(content)) {
-                            if (confirm(`Vil du overskrive alt med ${content.length} kampanjer fra backup?`)) {
+                        if (content.campaigns || Array.isArray(content)) {
+                            // Håndter både gammelt format (kun array) og nytt format (objekt med keys)
+                            const cams = Array.isArray(content) ? content : (content.campaigns || []);
+                            const kpis = Array.isArray(content) ? [] : (content.kpiData || []);
+                            
+                            if (confirm(`Vil du gjenopprette backup? (${cams.length} kampanjer, ${kpis.length} datarader)`)) {
                                 setIsDataLoaded(true);
-                                updateCampaigns(content);
+                                setCampaigns(cams);
+                                setKpiData(kpis);
+                                saveData(cams, kpis);
                             }
                         } else { alert("Ugyldig backup-fil."); }
                     } catch (err) { alert("Kunne ikke lese backup-filen."); }
@@ -572,7 +611,7 @@
                         </div>
                         
                         <div className="flex gap-2 mr-auto ml-4">
-                             <button onClick={() => downloadBackup(campaigns)} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1"><Icon name="download" size={12}/> Backup</button>
+                             <button onClick={() => downloadBackup({ campaigns, kpiData })} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1"><Icon name="download" size={12}/> Backup</button>
                              <button onClick={() => downloadCSV(campaigns)} className="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-3 py-1 rounded flex items-center gap-1" title="Eksporter til Excel"><Icon name="file-spreadsheet" size={12}/> CSV</button>
                              <label className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1 cursor-pointer">
                                 <Icon name="upload" size={12}/> Restore
@@ -652,7 +691,14 @@
                                 })}
                             </div>
                         </div>
-                    ) : <window.AnalyseDashboard />}
+                    ) : (
+                        // HER ER KOBLINGEN TIL ANALYSE FILEN:
+                        <window.AnalyseDashboard 
+                            kpiData={kpiData} 
+                            onAddKpi={handleAddKpi} 
+                            onDeleteKpi={handleDeleteKpi} 
+                        />
+                    )}
 
                     <footer className="mt-12 py-6 border-t border-slate-200 text-center text-xs text-slate-400">
                         &copy; 2026 Me & Max AS - Versjon 2.1 | Mike & his friend Gemini
