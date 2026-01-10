@@ -493,7 +493,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                 <ScoreCard title="CTR (Click-Through)" value={totals.ctr} previousValue={prevTotals.ctr} unit="%" decimals={2} />
                 
                 {/* 7. Snitt CPC */}
-                <ScoreCard title="Snitt CPC (Link)" value={totals.cpc} previousValue={prevTotals.cpc} isCurrency={true} isReverse={true} />
+                <ScoreCard title="Snitt CPC (Link)" value={totals.cpc} previousValue={prevTotals.cpc} unit=" kr" decimals={2} isReverse={true} />
             </div>
 
             {/* 3. GRAFER */}
