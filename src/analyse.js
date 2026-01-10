@@ -1,8 +1,7 @@
 // --- HJELPERE FOR FORMATERING ---
-const formatCurrency = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') + ' kr' : '-';
+const formatCurrency = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') : '-';
 const formatNumber = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') : '-';
-const formatDec = (val) => val !== undefined && val !== null ? val.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
-const formatPercent = (val) => val !== undefined && val !== null ? val.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%' : '-';
+const formatDec = (val) => val !== undefined && val !== null ? val.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-';
 
 // --- CSV PARSER (UENDRET) ---
 window.parseMetaCSV = (csvText) => {
@@ -28,7 +27,7 @@ window.parseMetaCSV = (csvText) => {
         'CPC (all) (NOK)': 'cpcAll', 'CPC (alle) (NOK)': 'cpcAll',
         'Landing page views': 'landingPageViews', 'Visninger av landingsside': 'landingPageViews',
         'Cost per landing page view (NOK)': 'costPerLandingPageView', 'Kostnad per visning av landingsside (NOK)': 'costPerLandingPageView',
-        'CTR (link click-through rate)': 'ctrLink', 'CTR (klikkrate for lenke)': 'ctrLink' // La til denne for Scorecard
+        'CTR (link click-through rate)': 'ctrLink', 'CTR (klikkrate for lenke)': 'ctrLink' 
     };
 
     const result = [];
@@ -37,8 +36,8 @@ window.parseMetaCSV = (csvText) => {
 
     for (let i = 1; i < lines.length; i++) {
         const row = [];
-        let inQuote = false;
         let buffer = '';
+        let inQuote = false;
         for (let char of lines[i]) {
             if (char === '"') { inQuote = !inQuote; }
             else if (char === ',' && !inQuote) { row.push(buffer); buffer = ''; }
@@ -59,7 +58,6 @@ window.parseMetaCSV = (csvText) => {
                 hasData = true;
             }
         });
-        // Beregn CTR Link manuelt hvis den mangler men vi har klikk og impressions
         if (hasData && obj.date) {
             if (obj.ctrLink === undefined && obj.linkClicks && obj.impressions) {
                 obj.ctrLink = (obj.linkClicks / obj.impressions) * 100;
@@ -72,46 +70,70 @@ window.parseMetaCSV = (csvText) => {
 
 // --- GRAFKOMPONENTER (SVG) ---
 
-const Tooltip = ({ x, y, children }) => (
-    <div className="absolute bg-slate-800 text-white text-[10px] p-2 rounded shadow-lg pointer-events-none z-10 whitespace-pre" 
-         style={{ left: x, top: y, transform: 'translate(-50%, -120%)' }}>
-        {children}
-    </div>
+const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left' }) => {
+    const mid = max / 2;
+    return (
+        <g className="text-[10px]" fill={color} textAnchor={align === 'left' ? 'end' : 'start'}>
+            <text x={align === 'left' ? -5 : 105} y="4" alignmentBaseline="middle">{formatNumber(max)}{unit}</text>
+            <text x={align === 'left' ? -5 : 105} y="54" alignmentBaseline="middle">{formatNumber(mid)}{unit}</text>
+            <text x={align === 'left' ? -5 : 105} y="100" alignmentBaseline="middle">0{unit}</text>
+        </g>
+    );
+};
+
+const GridLines = () => (
+    <g stroke="#f1f5f9" strokeWidth="1">
+        <line x1="0" y1="0" x2="100" y2="0" />
+        <line x1="0" y1="50" x2="100" y2="50" />
+        <line x1="0" y1="100" x2="100" y2="100" />
+    </g>
 );
 
-// Graf 1: ROI (Spend vs Clicks)
+// Graf 1: ROI
 const CostEffectChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
-    const maxSpend = Math.max(...sorted.map(d => d.spend)) || 1;
-    const maxClicks = Math.max(...sorted.map(d => d.linkClicks)) || 1;
+    
+    const maxSpend = Math.max(...sorted.map(d => d.spend)) || 100;
+    const maxClicks = Math.max(...sorted.map(d => d.linkClicks)) || 10;
+    const count = sorted.length;
+    const barWidth = count === 1 ? 20 : (100 / count) * 0.7; 
     const [hover, setHover] = React.useState(null);
 
     const points = sorted.map((d, i) => {
-        const x = (i / (sorted.length - 1 || 1)) * 100;
+        const x = count === 1 ? 50 : (i / (count - 1)) * 100;
         const y = 100 - ((d.linkClicks / maxClicks) * 100);
         return `${x},${y}`;
     }).join(' ');
 
     return (
-        <div className="relative h-48 w-full group" onMouseLeave={() => setHover(null)}>
+        <div className="relative h-56 w-full pl-10 pr-10 pt-4 pb-6" onMouseLeave={() => setHover(null)}>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+                <GridLines />
+                <YAxis max={maxSpend} unit=" kr" color="#6366f1" align="left" />
+                <YAxis max={maxClicks} unit="" color="#818cf8" align="right" />
+
                 {sorted.map((d, i) => {
                     const height = (d.spend / maxSpend) * 100;
-                    const width = (100 / sorted.length) * 0.8;
-                    const x = (i / sorted.length) * 100 + (100 / sorted.length * 0.1);
+                    const centerX = count === 1 ? 50 : (i / (count - 1)) * 100;
+                    const finalX = centerX - (barWidth / 2);
                     return (
-                        <rect key={i} x={x} y={100 - height} width={width} height={height} fill={hover === i ? "#c7d2fe" : "#e0e7ff"} rx="1" 
+                        <rect key={i} x={finalX} y={100 - height} width={barWidth} height={height} fill={hover === i ? "#c7d2fe" : "#e0e7ff"} rx="1" 
                               onMouseEnter={() => setHover(i)} />
                     );
                 })}
-                <polyline fill="none" stroke="#6366f1" strokeWidth="2" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+                
+                {count > 1 ? (
+                     <polyline fill="none" stroke="#6366f1" strokeWidth="2" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+                ) : (
+                     <line x1="40" y1={100 - ((sorted[0].linkClicks / maxClicks) * 100)} x2="60" y2={100 - ((sorted[0].linkClicks / maxClicks) * 100)} stroke="#6366f1" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                )}
             </svg>
             {hover !== null && sorted[hover] && (
-                <div className="absolute top-0 right-0 bg-white/90 p-2 border border-indigo-100 rounded shadow-sm text-xs pointer-events-none">
-                    <div className="font-bold text-slate-700">{sorted[hover].date}</div>
-                    <div className="text-indigo-600">Spend: {formatCurrency(sorted[hover].spend)}</div>
-                    <div className="text-indigo-600">Clicks: {formatNumber(sorted[hover].linkClicks)}</div>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-800 text-white p-2 rounded shadow-lg text-xs pointer-events-none z-20 whitespace-nowrap">
+                    <div className="font-bold border-b border-slate-600 mb-1 pb-1">{sorted[hover].date}</div>
+                    <div className="text-indigo-200">Spend: {formatCurrency(sorted[hover].spend)} kr</div>
+                    <div className="text-white">Clicks: {formatNumber(sorted[hover].linkClicks)}</div>
                 </div>
             )}
              <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
@@ -122,7 +144,7 @@ const CostEffectChart = ({ data }) => {
     );
 };
 
-// Graf 2: Pris (CPC vs CPM)
+// Graf 2: Pris
 const PriceTrendChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -131,28 +153,44 @@ const PriceTrendChart = ({ data }) => {
         cpc: d.cpcLink || (d.linkClicks > 0 ? d.spend / d.linkClicks : 0),
         cpm: d.cpm || (d.impressions > 0 ? (d.spend / d.impressions) * 1000 : 0)
     }));
-    const maxCpc = Math.max(...processed.map(d => d.cpc)) || 1;
-    const maxCpm = Math.max(...processed.map(d => d.cpm)) || 1;
+    const maxCpc = Math.max(...processed.map(d => d.cpc)) || 10;
+    const maxCpm = Math.max(...processed.map(d => d.cpm)) || 100;
+    const count = processed.length;
     const [hover, setHover] = React.useState(null);
 
-    const pointsCpc = processed.map((d, i) => `${(i / (processed.length - 1 || 1)) * 100},${100 - ((d.cpc / maxCpc) * 100)}`).join(' ');
-    const pointsCpm = processed.map((d, i) => `${(i / (processed.length - 1 || 1)) * 100},${100 - ((d.cpm / maxCpm) * 100)}`).join(' ');
+    const getPoints = (key, max) => processed.map((d, i) => {
+        const x = count === 1 ? 50 : (i / (count - 1)) * 100;
+        const y = 100 - ((d[key] / max) * 100);
+        return `${x},${y}`;
+    }).join(' ');
 
     return (
-        <div className="relative h-48 w-full" onMouseLeave={() => setHover(null)}>
+        <div className="relative h-56 w-full pl-10 pr-10 pt-4 pb-6" onMouseLeave={() => setHover(null)}>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
-                <polyline fill="none" stroke="#f59e0b" strokeWidth="2" points={pointsCpm} vectorEffect="non-scaling-stroke" strokeDasharray="4" className="opacity-50" />
-                <polyline fill="none" stroke="#10b981" strokeWidth="2" points={pointsCpc} vectorEffect="non-scaling-stroke" />
-                {processed.map((d, i) => (
-                    <rect key={i} x={(i / (processed.length - 1 || 1)) * 100 - 2} y="0" width="4" height="100" fill="transparent" 
-                          onMouseEnter={() => setHover(i)} />
-                ))}
+                <GridLines />
+                <YAxis max={maxCpc} unit=" kr" color="#10b981" align="left" />
+                <YAxis max={maxCpm} unit=" kr" color="#f59e0b" align="right" />
+                {count > 1 ? (
+                    <>
+                        <polyline fill="none" stroke="#f59e0b" strokeWidth="2" points={getPoints('cpm', maxCpm)} vectorEffect="non-scaling-stroke" strokeDasharray="4" className="opacity-60" />
+                        <polyline fill="none" stroke="#10b981" strokeWidth="2" points={getPoints('cpc', maxCpc)} vectorEffect="non-scaling-stroke" />
+                    </>
+                ) : (
+                    <>
+                         <circle cx="50" cy={100 - ((processed[0].cpm / maxCpm) * 100)} r="2" fill="#f59e0b" />
+                         <circle cx="50" cy={100 - ((processed[0].cpc / maxCpc) * 100)} r="2" fill="#10b981" />
+                    </>
+                )}
+                {processed.map((d, i) => {
+                    const x = count === 1 ? 50 : (i / (count - 1)) * 100;
+                    return <rect key={i} x={x - 4} y="0" width="8" height="100" fill="transparent" className="cursor-pointer" onMouseEnter={() => setHover(i)} />;
+                })}
             </svg>
             {hover !== null && processed[hover] && (
-                <div className="absolute top-0 right-0 bg-white/90 p-2 border border-emerald-100 rounded shadow-sm text-xs pointer-events-none">
-                    <div className="font-bold text-slate-700">{processed[hover].date}</div>
-                    <div className="text-emerald-600">CPC: {formatDec(processed[hover].cpc)} kr</div>
-                    <div className="text-amber-500">CPM: {formatCurrency(processed[hover].cpm)}</div>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-800 text-white p-2 rounded shadow-lg text-xs pointer-events-none z-20 whitespace-nowrap">
+                    <div className="font-bold border-b border-slate-600 mb-1 pb-1">{processed[hover].date}</div>
+                    <div className="text-emerald-400">CPC: {formatDec(processed[hover].cpc)} kr</div>
+                    <div className="text-amber-400">CPM: {formatCurrency(processed[hover].cpm)} kr</div>
                 </div>
             )}
              <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
@@ -163,33 +201,45 @@ const PriceTrendChart = ({ data }) => {
     );
 };
 
-// Graf 3: Metning (Impressions vs Reach)
+// Graf 3: Metning
 const SaturationChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
-    const maxVal = Math.max(...sorted.map(d => Math.max(d.impressions, d.reach))) || 1;
+    const maxVal = Math.max(...sorted.map(d => Math.max(d.impressions, d.reach))) || 1000;
+    const count = sorted.length;
     const [hover, setHover] = React.useState(null);
 
     const buildPath = (key) => {
-        const points = sorted.map((d, i) => `${(i / (sorted.length - 1 || 1)) * 100},${100 - ((d[key] / maxVal) * 100)}`);
+        if (count === 1) return ''; 
+        const points = sorted.map((d, i) => `${(i / (count - 1)) * 100},${100 - ((d[key] / maxVal) * 100)}`);
         return `M0,100 ${points.map(p => 'L' + p).join(' ')} L100,100 Z`;
     };
 
     return (
-        <div className="relative h-48 w-full" onMouseLeave={() => setHover(null)}>
+        <div className="relative h-56 w-full pl-10 pr-2 pt-4 pb-6" onMouseLeave={() => setHover(null)}>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
-                <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.2)" stroke="#a855f7" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                <GridLines />
+                <YAxis max={maxVal} unit="" color="#64748b" align="left" />
+                {count > 1 ? (
+                    <>
+                        <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                        <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.2)" stroke="#a855f7" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                    </>
+                ) : (
+                     <>
+                        <rect x="45" y={100 - ((sorted[0].impressions / maxVal) * 100)} width="10" height={(sorted[0].impressions / maxVal) * 100} fill="rgba(59, 130, 246, 0.5)" />
+                        <rect x="55" y={100 - ((sorted[0].reach / maxVal) * 100)} width="10" height={(sorted[0].reach / maxVal) * 100} fill="rgba(168, 85, 247, 0.5)" />
+                     </>
+                )}
                 {sorted.map((d, i) => (
-                    <rect key={i} x={(i / (sorted.length - 1 || 1)) * 100 - 2} y="0" width="4" height="100" fill="transparent" 
-                          onMouseEnter={() => setHover(i)} />
+                    <rect key={i} x={(count === 1 ? 50 : (i / (count - 1)) * 100) - 2} y="0" width="4" height="100" fill="transparent" onMouseEnter={() => setHover(i)} />
                 ))}
             </svg>
             {hover !== null && sorted[hover] && (
-                <div className="absolute top-0 right-0 bg-white/90 p-2 border border-blue-100 rounded shadow-sm text-xs pointer-events-none">
-                    <div className="font-bold text-slate-700">{sorted[hover].date}</div>
-                    <div className="text-blue-500">Impr: {formatNumber(sorted[hover].impressions)}</div>
-                    <div className="text-purple-500">Reach: {formatNumber(sorted[hover].reach)}</div>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-800 text-white p-2 rounded shadow-lg text-xs pointer-events-none z-20 whitespace-nowrap">
+                    <div className="font-bold border-b border-slate-600 mb-1 pb-1">{sorted[hover].date}</div>
+                    <div className="text-blue-300">Impr: {formatNumber(sorted[hover].impressions)}</div>
+                    <div className="text-purple-300">Reach: {formatNumber(sorted[hover].reach)}</div>
                 </div>
             )}
             <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
@@ -203,36 +253,45 @@ const SaturationChart = ({ data }) => {
 // --- SCORECARD ---
 const ScoreCard = ({ title, value, previousValue, isCurrency, isReverse, unit = '' }) => {
     const Icon = window.Icon;
-    const diff = value - previousValue;
-    const diffPercent = previousValue > 0 ? (diff / previousValue) * 100 : 0;
+    const hasPrev = previousValue !== undefined && previousValue !== null && !isNaN(previousValue);
+    const diff = value - (previousValue || 0);
+    const diffPercent = (hasPrev && previousValue > 0) ? (diff / previousValue) * 100 : 0;
     
-    // Farge-logikk: 
-    // Normal: Økning er Grønn (f.eks Salg). 
-    // Reverse: Økning er Rød (f.eks CPC/Kostnad).
     let color = "text-slate-400";
     let iconName = "minus";
 
-    if (diff > 0) {
-        color = isReverse ? "text-red-500" : "text-emerald-500";
-        iconName = "trending-up";
-    } else if (diff < 0) {
-        color = isReverse ? "text-emerald-500" : "text-red-500";
-        iconName = "trending-down";
+    if (hasPrev && Math.abs(diff) > 0) {
+        if (diff > 0) {
+            color = isReverse ? "text-red-500" : "text-emerald-500";
+            iconName = "trending-up";
+        } else {
+            color = isReverse ? "text-emerald-500" : "text-red-500";
+            iconName = "trending-down";
+        }
     }
+
+    const formatValue = (v) => {
+        if (v === undefined || v === null) return '-';
+        if (isCurrency) return Math.round(v).toLocaleString('nb-NO') + ' kr';
+        if (unit === '%') return v.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+        return Math.round(v).toLocaleString('nb-NO') + unit;
+    };
 
     return (
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-28">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">{title}</h3>
             <div>
                 <div className="text-2xl font-extrabold text-slate-800">
-                    {isCurrency ? formatCurrency(value) : formatNumber(value) + unit}
+                    {formatValue(value)}
                 </div>
-                {previousValue > 0 && (
+                {hasPrev && previousValue > 0 ? (
                     <div className={`flex items-center gap-1 text-xs font-bold mt-1 ${color}`}>
                         <Icon name={iconName} size={12} />
                         <span>{Math.abs(diffPercent).toFixed(1)}%</span>
-                        <span className="text-slate-400 font-normal ml-1">vs forrige</span>
+                        <span className="text-slate-400 font-normal ml-1">vs {formatValue(previousValue)}</span>
                     </div>
+                ) : (
+                    <div className="text-xs text-slate-300 mt-1">Ingen data forrige periode</div>
                 )}
             </div>
         </div>
@@ -245,25 +304,20 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const { useState, useRef, useEffect } = React;
     const csvInputRef = useRef(null);
 
-    // --- STATE ---
+    // STATE
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isTableExpanded, setIsTableExpanded] = useState(false);
-    
-    // FILTER STATE
-    const [filterType, setFilterType] = useState('last30'); // today, last7, last30, thisMonth, lastMonth, custom
+    const [filterType, setFilterType] = useState('last30'); 
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
-    // SETT DATOER NÅR FILTER ENDRES
+    // Initialiser datoer
     useEffect(() => {
         const today = new Date();
         let start = new Date();
         let end = new Date();
 
-        // Nullstill tid for nøyaktig sammenligning
-        const stripTime = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
         if (filterType === 'today') {
-            // Start og slutt er i dag
+            // start = end = today
         } else if (filterType === 'last7') {
             start.setDate(today.getDate() - 6);
         } else if (filterType === 'last30') {
@@ -274,7 +328,6 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
             start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
             end = new Date(today.getFullYear(), today.getMonth(), 0);
         } else if (filterType === 'custom') {
-            // Behold eksisterende custom dates (satt via input)
             return; 
         }
 
@@ -284,19 +337,19 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         });
     }, [filterType]);
 
-    // FILTRER DATA
+    // Filtrering
     const getFilteredData = (rangeStart, rangeEnd) => {
         if (!kpiData) return [];
         return kpiData.filter(d => d.date >= rangeStart && d.date <= rangeEnd);
     };
 
-    // BEREGN FORRIGE PERIODE (For sammenligning)
+    // Beregn forrige periode
     const getPreviousRange = () => {
         if (!dateRange.start || !dateRange.end) return { start: '', end: '' };
         const start = new Date(dateRange.start);
         const end = new Date(dateRange.end);
         const diffTime = Math.abs(end - start);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inkluderer startdag
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
         const prevEnd = new Date(start);
         prevEnd.setDate(start.getDate() - 1);
@@ -314,18 +367,15 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const prevRange = getPreviousRange();
     const prevData = getFilteredData(prevRange.start, prevRange.end);
 
-    // AGGREGATER
+    // Aggregater
     const sum = (data, key) => data.reduce((acc, curr) => acc + (curr[key] || 0), 0);
-    const avg = (data, key) => data.length > 0 ? sum(data, key) / data.length : 0;
     
-    // Beregn snitt CTR vektet (Totalt Klikk / Totalt Visninger)
     const calcCtr = (data) => {
         const clicks = sum(data, 'linkClicks');
         const impr = sum(data, 'impressions');
         return impr > 0 ? (clicks / impr) * 100 : 0;
     };
     
-    // Beregn snitt CPC vektet (Total Spend / Total Klikk)
     const calcCpc = (data) => {
         const spend = sum(data, 'spend');
         const clicks = sum(data, 'linkClicks');
@@ -346,11 +396,11 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         ctr: calcCtr(prevData)
     };
 
-    // --- STANDARD TABELL ---
+    // Tabell-data
     const sortedData = [...(kpiData || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
     const visibleTableData = isTableExpanded ? sortedData : sortedData.slice(0, 5);
 
-    // Manuell form handling
+    // Handlers
     const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), reach:'', frequency:'', spend:'', impressions:'', cpm:'', linkClicks:'', cpcLink:'', clicksAll:'', ctrAll:'', cpcAll:'', landingPageViews:'', costPerLandingPageView:'' });
     const handleFormChange = (e) => setForm({...form, [e.target.name]: e.target.value});
     const handleFormSubmit = (e) => {
@@ -360,7 +410,6 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         onAddKpi(numData);
         setIsFormOpen(false);
     };
-
     const handleCsvUpload = (e) => {
         const file = e.target.files[0];
         if(!file) return;
@@ -375,22 +424,15 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-            
-            {/* 1. KONTROLLPANEL (Filter & Import) */}
+            {/* 1. TOP BAR */}
             <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm sticky top-0 z-30">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                      <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mr-4">
                         <Icon name="bar-chart-2" size={24} className="text-indigo-600"/> 
                         Meta Analyse
                     </h2>
-                    
-                    {/* DATOFILTER */}
                     <div className="flex bg-slate-100 p-1 rounded-lg">
-                        <select 
-                            className="bg-transparent text-sm font-bold text-slate-700 outline-none px-2 py-1 cursor-pointer"
-                            value={filterType}
-                            onChange={(e) => setFilterType(e.target.value)}
-                        >
+                        <select className="bg-transparent text-sm font-bold text-slate-700 outline-none px-2 py-1 cursor-pointer" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                             <option value="today">I dag</option>
                             <option value="last7">Siste 7 dager</option>
                             <option value="last30">Siste 30 dager</option>
@@ -399,8 +441,6 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                             <option value="custom">Egendefinert...</option>
                         </select>
                     </div>
-
-                    {/* DATOVELGERE (Viser alltid hvis custom, eller for info) */}
                     {(filterType === 'custom' || true) && (
                         <div className={`flex items-center gap-2 text-sm transition-all ${filterType !== 'custom' ? 'opacity-50 grayscale pointer-events-none hidden md:flex' : ''}`}>
                             <input type="date" className="border rounded px-2 py-1 bg-white" value={dateRange.start} onChange={(e) => { setDateRange({...dateRange, start: e.target.value}); setFilterType('custom'); }} />
@@ -409,7 +449,6 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                         </div>
                     )}
                 </div>
-
                 <div className="flex gap-2 w-full xl:w-auto">
                     <label className="flex-1 xl:flex-none justify-center bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors">
                         <Icon name="file-spreadsheet" size={14} /> CSV Import
@@ -479,7 +518,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                 </div>
             )}
 
-            {/* 5. DATATABELL */}
+            {/* 5. TABELL */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                     <h3 className="font-bold text-slate-700 text-sm">Rådata</h3>
@@ -505,14 +544,14 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                             {visibleTableData.map(row => (
                                 <tr key={row.id} className="hover:bg-slate-50 group transition-colors">
                                     <td className="px-3 py-2 font-medium text-slate-700">{row.date}</td>
-                                    <td className="px-3 py-2 text-right font-bold text-slate-800">{formatCurrency(row.spend)}</td>
+                                    <td className="px-3 py-2 text-right font-bold text-slate-800">{formatCurrency(row.spend)} kr</td>
                                     <td className="px-3 py-2 text-right text-slate-600">{formatNumber(row.impressions)}</td>
                                     <td className="px-3 py-2 text-right text-slate-600">{formatNumber(row.reach)}</td>
                                     <td className="px-3 py-2 text-right text-slate-600">{formatDec(row.frequency)}</td>
-                                    <td className="px-3 py-2 text-right text-slate-600">{formatCurrency(row.cpm)}</td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{formatCurrency(row.cpm)} kr</td>
                                     <td className="px-3 py-2 text-right font-medium text-indigo-600">{formatNumber(row.linkClicks)}</td>
                                     <td className="px-3 py-2 text-right text-indigo-600">{formatDec(row.cpcLink)} kr</td>
-                                    <td className="px-3 py-2 text-right text-slate-600">{row.ctrLink ? formatDec(row.ctrLink) + '%' : ((row.linkClicks/row.impressions)*100).toFixed(2) + '%'}</td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{row.ctrLink ? row.ctrLink.toLocaleString('nb-NO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '%' : ((row.linkClicks/row.impressions)*100).toLocaleString('nb-NO', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '%'}</td>
                                     <td className="px-3 py-2 text-center">
                                         <button onClick={() => onDeleteKpi(row.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1"><Icon name="trash-2" size={14} /></button>
                                     </td>
