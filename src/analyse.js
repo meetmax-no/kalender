@@ -9,12 +9,12 @@ const formatDateShort = (dateStr) => {
 };
 
 // --- KONFIGURASJON FOR GRAFER ---
-// VIKTIG: Vi setter denne tilbake til originalen (35) slik at de små grafene blir fine.
+// Standard oppsett for de små grafene (disse rører vi ikke)
 const G = {
     w: 300, 
     h: 150, 
-    padL: 35, // Tilbake til 35 (standard)
-    padR: 35, // Tilbake til 35 (standard)
+    padL: 35, 
+    padR: 35, 
     padT: 20, 
     padB: 20, 
     graphW: () => 300 - 35 - 35, 
@@ -28,12 +28,10 @@ const G = {
 
 // --- GRAFKOMPONENTER (SVG) ---
 
-// Oppdatert: Støtter nå egendefinert padding (padL/padR)
 const GridLines = ({ width, padL, padR }) => {
     const w = width || G.w;
     const pL = padL || G.padL;
     const pR = padR || G.padR;
-    
     return (
         <g stroke="#f1f5f9" strokeWidth="1">
             <line x1={pL} y1={G.padT} x2={w - pR} y2={G.padT} />
@@ -43,14 +41,12 @@ const GridLines = ({ width, padL, padR }) => {
     );
 };
 
-// Oppdatert: Støtter nå egendefinert padding
 const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left', width, padL, padR }) => {
     const w = width || G.w;
     const pL = padL || G.padL;
     const pR = padR || G.padR;
-    
     const mid = max / 2;
-    // Posisjonering basert på den lokale paddingen
+    // Teksten plasseres litt utenfor padding-linjen
     const xPos = align === 'left' ? pL - 8 : w - pR + 8;
     const anchor = align === 'left' ? 'end' : 'start';
     
@@ -63,7 +59,6 @@ const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left', width, padL,
     );
 };
 
-// Oppdatert: Støtter nå egendefinert padding
 const XAxis = ({ data, width, padL, padR }) => {
     if (!data || data.length === 0) return null;
     const w = width || G.w;
@@ -88,13 +83,16 @@ const XAxis = ({ data, width, padL, padR }) => {
     );
 };
 
-// Graf 1: ROI (Bruker spesial-padding på 50px)
+// Graf 1: ROI (Nå med SIKKERHETSSONE)
 const CostEffectChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     
     const chartW = 800; 
-    // SPESIALPADDING KUN FOR DENNE GRAFEN
-    const customPad = 50; 
+    
+    // VIKTIG: Her er magien
+    const axisPad = 50;   // Hvor teksten (Y-aksen) står
+    const safetyGap = 40; // Ekstra luft mellom tekst og søyler
+    const graphPad = axisPad + safetyGap; // Her starter faktisk grafen (50 + 40 = 90)
 
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
     const maxSpend = Math.max(...sorted.map(d => d.spend)) || 100;
@@ -102,21 +100,21 @@ const CostEffectChart = ({ data }) => {
     const count = sorted.length;
     const [hover, setHover] = React.useState(null);
 
-    // X-kalkulator som bruker customPad (50)
+    // X-kalkulator som bruker den nye, inntrukne 'graphPad'
     const getX = (i, total) => {
         if (total <= 1) return chartW / 2;
-        const usableW = chartW - customPad - customPad;
-        return customPad + (i / (total - 1)) * usableW;
+        const usableW = chartW - graphPad - graphPad;
+        return graphPad + (i / (total - 1)) * usableW;
     };
 
-    const barWidth = count === 1 ? 40 : ((chartW - customPad - customPad) / count) * 0.6;
+    const barWidth = count === 1 ? 40 : ((chartW - graphPad - graphPad) / count) * 0.6;
     const points = sorted.map((d, i) => `${getX(i, count)},${G.y(d.linkClicks, maxClicks)}`).join(' ');
 
     return (
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
             <svg viewBox={`0 0 ${chartW} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
-                {/* Sender med customPad til GridLines */}
-                <GridLines width={chartW} padL={customPad} padR={customPad} />
+                {/* Gridlines bruker graphPad slik at linjene følger grafens bredde */}
+                <GridLines width={chartW} padL={graphPad} padR={graphPad} />
 
                 {sorted.map((d, i) => {
                     const barH = (d.spend / maxSpend) * G.graphH();
@@ -138,13 +136,15 @@ const CostEffectChart = ({ data }) => {
                     <circle key={i} cx={getX(i, count)} cy={G.y(d.linkClicks, maxClicks)} r={hover===i?3:1.5} fill="white" stroke="#6366f1" strokeWidth="1.5" className="transition-all" />
                 ))}
 
-                {/* Sender med customPad til Aksene også */}
-                <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" width={chartW} padL={customPad} padR={customPad} />
-                <YAxis max={maxClicks} unit="" color="#6366f1" align="right" width={chartW} padL={customPad} padR={customPad} />
-                <XAxis data={sorted} width={chartW} padL={customPad} padR={customPad} />
+                {/* Y-AKSER: Bruker 'axisPad' (50) for å stå langt ute på kanten */}
+                <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" width={chartW} padL={axisPad} padR={axisPad} />
+                <YAxis max={maxClicks} unit="" color="#6366f1" align="right" width={chartW} padL={axisPad} padR={axisPad} />
+                
+                {/* X-AKSE: Bruker 'graphPad' (90) for å matche søylene */}
+                <XAxis data={sorted} width={chartW} padL={graphPad} padR={graphPad} />
 
                 {sorted.map((d, i) => {
-                    const zoneW = (chartW - customPad - customPad) / count;
+                    const zoneW = (chartW - graphPad - graphPad) / count;
                     return <rect key={i} x={getX(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
                 })}
             </svg>
@@ -164,7 +164,7 @@ const CostEffectChart = ({ data }) => {
     );
 };
 
-// Graf 2: Pris (Bruker standard G padding på 35 automatisk)
+// Graf 2: Pris (URØRT: Bruker standard G padding)
 const PriceTrendChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -222,7 +222,7 @@ const PriceTrendChart = ({ data }) => {
     );
 };
 
-// Graf 3: Metning (Bruker standard G padding på 35 automatisk)
+// Graf 3: Metning (URØRT: Bruker standard G padding)
 const SaturationChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
