@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeetMax Manager v2.2 (Global Fix)</title>
-    
+    <title>MeetMax Manager v2.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <script src="src/config.js"></script>
@@ -20,13 +21,6 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         .btn-hover { transition: transform 0.1s; }
         .btn-hover:active { transform: scale(0.98); }
-        
-        /* Animadjon for overlay */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-        }
-        .animate-pop { animation: fadeIn 0.15s ease-out forwards; }
     </style>
 </head>
 <body>
@@ -287,6 +281,7 @@
             
             const [visibleTypes, setVisibleTypes] = useState(Object.keys(TASK_TYPES));
             const [previewImage, setPreviewImage] = useState(null); 
+            
             const [isPreviewLocked, setIsPreviewLocked] = useState(false); // FIX: Lås-state for mobil
 
             const fileInputRef = useRef(null);
@@ -574,20 +569,19 @@
                                                                 <Icon name={conf.icon} size={12} color={conf.color.split(' ')[0]} />
                                                                 <span className="truncate flex-1">{t.time}</span>
                                                                 
-                                                                {/* BILDE-IKON - KUN IKONET HER, BILDET VISES I GLOBAL OVERLAY */}
+                                                                {/* BILDE-IKON - MED 5px SAFE ZONE & GLOBAL POP-OUT */}
                                                                 {formattedImgUrl && (
                                                                     <div 
-                                                                        className="relative p-[5px] -m-[5px] z-10"
-                                                                        onMouseEnter={() => !window.matchMedia("(pointer: coarse)").matches && setPreviewImage(formattedImgUrl)}
-                                                                        onMouseLeave={() => !window.matchMedia("(pointer: coarse)").matches && !isPreviewLocked && setPreviewImage(null)}
+                                                                        className="relative has-image p-[5px] -m-[5px] z-10" // Safe Zone (5px)
                                                                         onClick={(e) => { 
                                                                             e.stopPropagation(); 
-                                                                            // MOBIL: Klikk for å åpne
                                                                             if (window.matchMedia("(pointer: coarse)").matches) {
                                                                                 setPreviewImage(formattedImgUrl);
                                                                                 setIsPreviewLocked(true); 
                                                                             }
                                                                         }}
+                                                                        onMouseEnter={() => !window.matchMedia("(pointer: coarse)").matches && setPreviewImage(formattedImgUrl)}
+                                                                        onMouseLeave={() => !window.matchMedia("(pointer: coarse)").matches && !isPreviewLocked && setPreviewImage(null)}
                                                                     >
                                                                         <Icon name="camera" size={12} color="text-slate-400" />
                                                                     </div>
@@ -610,15 +604,15 @@
 
             return (
                 <div className="max-w-7xl mx-auto p-4 bg-slate-50 min-h-screen">
-                    {/* GLOBAL PREVIEW - VISES ALLTID OVER ALT ANNET */}
+                    {/* GLOBAL PREVIEW */}
                     {previewImage && (
                         <div 
-                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm cursor-pointer animate-pop" 
+                            className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-[fade-in_0.2s] ${isPreviewLocked ? 'cursor-pointer pointer-events-auto' : 'pointer-events-none'}`} 
                             onClick={() => { setPreviewImage(null); setIsPreviewLocked(false); }}
                         >
-                            <div className="relative max-w-[90vw] max-h-[90vh]">
-                                <img src={previewImage} alt="Preview" className="w-full h-full object-contain rounded shadow-2xl" />
-                                {isPreviewLocked && <p className="text-white text-center mt-4 text-sm font-medium">Trykk hvor som helst for å lukke</p>}
+                            <div className="relative max-w-4xl max-h-[90vh]">
+                                <img src={previewImage} alt="Preview" className="w-full h-full object-contain rounded-lg shadow-2xl" />
+                                {isPreviewLocked && <p className="text-white text-center mt-2 text-sm">Trykk hvor som helst for å lukke</p>}
                             </div>
                         </div>
                     )}
@@ -740,7 +734,7 @@
                     ) : <KpiDashboard />}
 
                     <footer className="mt-12 py-6 border-t border-slate-200 text-center text-xs text-slate-400">
-                        &copy; 2026 Me & Max AS - Versjon 2.2 (Global Fix)
+                        &copy; 2026 Me & Max AS - Versjon 2.1 | Mike & his friend Gemini
                     </footer>
                 </div>
             );
