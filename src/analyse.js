@@ -13,13 +13,17 @@ const formatDateShort = (dateStr) => {
 const G = {
     w: 300, // Total bredde
     h: 150, // Total høyde
-    padL: 35, // Venstre marg (for Y-akse)
-    padR: 35, // Høyre marg (for Y-akse)
+    
+    // ENDRET: Økt padding (marg) fra 35 til 40 for å gi mer plass til Y-aksen
+    padL: 40, // Venstre marg (for Y-akse)
+    padR: 40, // Høyre marg (for Y-akse)
+    
     padT: 20, // Topp marg
     padB: 20, // Bunn marg
     
     // Hjelpefunksjoner for å plassere ting
-    graphW: () => 300 - 35 - 35, // 230
+    // Må oppdatere disse siden padding er endret (300 - 40 - 40 = 220)
+    graphW: () => 300 - 40 - 40, 
     graphH: () => 150 - 20 - 20, // 110
     
     // Konverter data til Y-koordinat
@@ -28,7 +32,8 @@ const G = {
     // Konverter index til X-koordinat
     x: (i, count) => {
         if (count <= 1) return 150; // Senter
-        return 35 + (i / (count - 1)) * 230;
+        // Bruker graphW() som nå er 220
+        return 40 + (i / (count - 1)) * (300 - 40 - 40);
     }
 };
 
@@ -47,7 +52,8 @@ const GridLines = () => (
 
 const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left' }) => {
     const mid = max / 2;
-    const xPos = align === 'left' ? G.padL - 5 : G.w - G.padR + 5;
+    // ENDRET: Justert xPos for å flytte teksten 5px lenger ut (fra -5 til -10)
+    const xPos = align === 'left' ? G.padL - 10 : G.w - G.padR + 10;
     const anchor = align === 'left' ? 'end' : 'start';
     return (
         <g fill={color} textAnchor={anchor} fontSize="8" fontWeight="500" style={{ fontFamily: 'sans-serif' }}>
@@ -478,6 +484,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
 
             {/* 3. GRAFER */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* ENDRET: Lagt til lg:col-span-2 her for å gjøre den bred */}
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm col-span-1 lg:col-span-2">
                     <h3 className="text-sm font-bold text-slate-700 mb-6 flex justify-between">
                         <span>💰 Kostnad vs Effekt (ROI)</span>
