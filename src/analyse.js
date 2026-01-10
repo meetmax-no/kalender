@@ -9,17 +9,17 @@ const formatDateShort = (dateStr) => {
 };
 
 // --- KONFIGURASJON FOR GRAFER ---
+// VIKTIG: Vi setter denne tilbake til originalen (35) slik at de små grafene blir fine.
 const G = {
     w: 300, 
     h: 150, 
-    padL: 35, 
-    padR: 35, 
+    padL: 35, // Tilbake til 35 (standard)
+    padR: 35, // Tilbake til 35 (standard)
     padT: 20, 
     padB: 20, 
     graphW: () => 300 - 35 - 35, 
     graphH: () => 150 - 20 - 20, 
     y: (val, max) => 20 + (110 - (val / (max || 1)) * 110),
-    // Standard X-funksjon (brukes av små grafer)
     x: (i, count) => {
         if (count <= 1) return 150; 
         return 35 + (i / (count - 1)) * 230;
@@ -28,24 +28,34 @@ const G = {
 
 // --- GRAFKOMPONENTER (SVG) ---
 
-const GridLines = ({ width }) => {
-    const w = width || G.w; // Bruk tilsendt bredde eller default 300
+// Oppdatert: Støtter nå egendefinert padding (padL/padR)
+const GridLines = ({ width, padL, padR }) => {
+    const w = width || G.w;
+    const pL = padL || G.padL;
+    const pR = padR || G.padR;
+    
     return (
         <g stroke="#f1f5f9" strokeWidth="1">
-            <line x1={G.padL} y1={G.padT} x2={w - G.padR} y2={G.padT} />
-            <line x1={G.padL} y1={G.padT + G.graphH()/2} x2={w - G.padR} y2={G.padT + G.graphH()/2} strokeDasharray="4" />
-            <line x1={G.padL} y1={G.h - G.padB} x2={w - G.padR} y2={G.h - G.padB} />
+            <line x1={pL} y1={G.padT} x2={w - pR} y2={G.padT} />
+            <line x1={pL} y1={G.padT + G.graphH()/2} x2={w - pR} y2={G.padT + G.graphH()/2} strokeDasharray="4" />
+            <line x1={pL} y1={G.h - G.padB} x2={w - pR} y2={G.h - G.padB} />
         </g>
     );
 };
 
-const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left', width }) => {
+// Oppdatert: Støtter nå egendefinert padding
+const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left', width, padL, padR }) => {
     const w = width || G.w;
+    const pL = padL || G.padL;
+    const pR = padR || G.padR;
+    
     const mid = max / 2;
-    const xPos = align === 'left' ? G.padL - 5 : w - G.padR + 5;
+    // Posisjonering basert på den lokale paddingen
+    const xPos = align === 'left' ? pL - 8 : w - pR + 8;
     const anchor = align === 'left' ? 'end' : 'start';
+    
     return (
-        <g fill={color} textAnchor={anchor} fontSize="8" fontWeight="500" style={{ fontFamily: 'sans-serif' }}>
+        <g fill={color} textAnchor={anchor} fontSize="10" fontWeight="500" style={{ fontFamily: 'sans-serif' }}>
             <text x={xPos} y={G.padT + 3} alignmentBaseline="middle">{formatNumber(max)}{unit}</text>
             <text x={xPos} y={G.padT + G.graphH()/2 + 3} alignmentBaseline="middle">{formatNumber(mid)}{unit}</text>
             <text x={xPos} y={G.h - G.padB + 3} alignmentBaseline="middle">0{unit}</text>
@@ -53,20 +63,22 @@ const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left', width }) => 
     );
 };
 
-const XAxis = ({ data, width }) => {
+// Oppdatert: Støtter nå egendefinert padding
+const XAxis = ({ data, width, padL, padR }) => {
     if (!data || data.length === 0) return null;
     const w = width || G.w;
+    const pL = padL || G.padL;
+    const pR = padR || G.padR;
     
-    // Dynamisk X-kalkulator basert på bredde
     const getLocalX = (i, total) => {
         if (total <= 1) return w / 2;
-        const usableW = w - G.padL - G.padR;
-        return G.padL + (i / (total - 1)) * usableW;
+        const usableW = w - pL - pR;
+        return pL + (i / (total - 1)) * usableW;
     };
 
     const step = Math.ceil(data.length / 8); 
     return (
-        <g fill="#94a3b8" textAnchor="middle" fontSize="8" style={{ fontFamily: 'sans-serif' }}>
+        <g fill="#94a3b8" textAnchor="middle" fontSize="9" style={{ fontFamily: 'sans-serif' }}>
             {data.map((d, i) => {
                 if (i % step !== 0 && i !== data.length - 1) return null; 
                 const x = getLocalX(i, data.length);
@@ -76,12 +88,13 @@ const XAxis = ({ data, width }) => {
     );
 };
 
-// Graf 1: ROI (Nå med bredde 800px for å unngå strukket tekst)
+// Graf 1: ROI (Bruker spesial-padding på 50px)
 const CostEffectChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     
-    // VIKTIG: Bredde satt til 800 for denne grafen
     const chartW = 800; 
+    // SPESIALPADDING KUN FOR DENNE GRAFEN
+    const customPad = 50; 
 
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
     const maxSpend = Math.max(...sorted.map(d => d.spend)) || 100;
@@ -89,24 +102,21 @@ const CostEffectChart = ({ data }) => {
     const count = sorted.length;
     const [hover, setHover] = React.useState(null);
 
-    // Lokal X-kalkulator for 800px bredde
+    // X-kalkulator som bruker customPad (50)
     const getX = (i, total) => {
         if (total <= 1) return chartW / 2;
-        const usableW = chartW - G.padL - G.padR;
-        return G.padL + (i / (total - 1)) * usableW;
+        const usableW = chartW - customPad - customPad;
+        return customPad + (i / (total - 1)) * usableW;
     };
 
-    const barWidth = count === 1 ? 40 : ((chartW - G.padL - G.padR) / count) * 0.6;
+    const barWidth = count === 1 ? 40 : ((chartW - customPad - customPad) / count) * 0.6;
     const points = sorted.map((d, i) => `${getX(i, count)},${G.y(d.linkClicks, maxClicks)}`).join(' ');
 
     return (
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
-            {/* preserveAspectRatio="xMidYMid meet" beholder proporsjoner, men viewBox er nå bred (800) */}
             <svg viewBox={`0 0 ${chartW} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
-                <GridLines width={chartW} />
-                <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" width={chartW} />
-                <YAxis max={maxClicks} unit="" color="#6366f1" align="right" width={chartW} />
-                <XAxis data={sorted} width={chartW} />
+                {/* Sender med customPad til GridLines */}
+                <GridLines width={chartW} padL={customPad} padR={customPad} />
 
                 {sorted.map((d, i) => {
                     const barH = (d.spend / maxSpend) * G.graphH();
@@ -128,8 +138,13 @@ const CostEffectChart = ({ data }) => {
                     <circle key={i} cx={getX(i, count)} cy={G.y(d.linkClicks, maxClicks)} r={hover===i?3:1.5} fill="white" stroke="#6366f1" strokeWidth="1.5" className="transition-all" />
                 ))}
 
+                {/* Sender med customPad til Aksene også */}
+                <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" width={chartW} padL={customPad} padR={customPad} />
+                <YAxis max={maxClicks} unit="" color="#6366f1" align="right" width={chartW} padL={customPad} padR={customPad} />
+                <XAxis data={sorted} width={chartW} padL={customPad} padR={customPad} />
+
                 {sorted.map((d, i) => {
-                    const zoneW = (chartW - G.padL - G.padR) / count;
+                    const zoneW = (chartW - customPad - customPad) / count;
                     return <rect key={i} x={getX(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
                 })}
             </svg>
@@ -149,7 +164,7 @@ const CostEffectChart = ({ data }) => {
     );
 };
 
-// Graf 2: Pris (Standard 300 bredde)
+// Graf 2: Pris (Bruker standard G padding på 35 automatisk)
 const PriceTrendChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -170,9 +185,6 @@ const PriceTrendChart = ({ data }) => {
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
             <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
-                <YAxis max={maxCpc} unit=" kr" color="#10b981" align="left" />
-                <YAxis max={maxCpm} unit=" kr" color="#f59e0b" align="right" />
-                <XAxis data={sorted} />
                 
                 {count > 1 ? (
                     <>
@@ -186,6 +198,10 @@ const PriceTrendChart = ({ data }) => {
                     </>
                 )}
                 
+                <YAxis max={maxCpc} unit=" kr" color="#10b981" align="left" />
+                <YAxis max={maxCpm} unit=" kr" color="#f59e0b" align="right" />
+                <XAxis data={sorted} />
+
                 {processed.map((d, i) => {
                     const zoneW = G.graphW() / count;
                     return <rect key={i} x={G.x(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
@@ -206,7 +222,7 @@ const PriceTrendChart = ({ data }) => {
     );
 };
 
-// Graf 3: Metning (Standard 300 bredde)
+// Graf 3: Metning (Bruker standard G padding på 35 automatisk)
 const SaturationChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -224,8 +240,6 @@ const SaturationChart = ({ data }) => {
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
             <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
-                <YAxis max={maxVal} unit="" color="#64748b" align="left" />
-                <XAxis data={sorted} />
 
                 {count > 1 ? (
                     <>
@@ -239,6 +253,9 @@ const SaturationChart = ({ data }) => {
                      </>
                 )}
                 
+                <YAxis max={maxVal} unit="" color="#64748b" align="left" />
+                <XAxis data={sorted} />
+
                 {sorted.map((d, i) => {
                     const zoneW = G.graphW() / count;
                     return <rect key={i} x={G.x(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
@@ -474,25 +491,12 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
 
             {/* 2. SCORECARDS */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* 1. Totalt Forbruk */}
                 <ScoreCard title="Totalt Forbruk" value={totals.spend} previousValue={prevTotals.spend} isCurrency={true} isReverse={true} />
-                
-                {/* 2. Reach */}
                 <ScoreCard title="Reach" value={totals.reach} previousValue={prevTotals.reach} />
-                
-                {/* 3. Impressions */}
                 <ScoreCard title="Impressions" value={totals.impressions} previousValue={prevTotals.impressions} />
-                
-                {/* 4. Frequency (Reverse logic: Down is Green) */}
                 <ScoreCard title="Frequency" value={totals.frequency} previousValue={prevTotals.frequency} unit="" decimals={2} isReverse={true} /> 
-                
-                {/* 5. Link Clicks */}
                 <ScoreCard title="Link Clicks" value={totals.clicks} previousValue={prevTotals.clicks} />
-                
-                {/* 6. CTR */}
                 <ScoreCard title="CTR (Click-Through)" value={totals.ctr} previousValue={prevTotals.ctr} unit="%" decimals={2} />
-                
-                {/* 7. Snitt CPC */}
                 <ScoreCard title="Snitt CPC (Link)" value={totals.cpc} previousValue={prevTotals.cpc} unit=" kr" decimals={2} isReverse={true} />
             </div>
 
