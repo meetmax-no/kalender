@@ -13,6 +13,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <script src="src/config.js"></script>
+    <script type="text/babel" src="src/analyse.js"></script>
 
     <style>
         body { background-color: #f8fafc; font-family: sans-serif; }
@@ -180,83 +181,6 @@
             });
         };
 
-        // --- GRAFER ---
-        const SimpleLineChart = ({ data, color }) => {
-            if (!data || data.length === 0) return null;
-            const max = Math.max(...data) || 1;
-            const pointsStr = data.map((val, i) => {
-                const x = (i / (data.length - 1 || 1)) * 100;
-                const y = 100 - ((val / max) * 100);
-                return `${x},${y}`;
-            }).join(' ');
-            return (
-                <div className="h-full w-full flex items-end">
-                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
-                        <polyline fill="none" stroke={color} strokeWidth="2" points={pointsStr} vectorEffect="non-scaling-stroke" />
-                        {data.map((val, i) => {
-                            const cx = (i / (data.length - 1 || 1)) * 100;
-                            const cy = 100 - ((val / max) * 100);
-                            return <circle key={i} cx={cx} cy={cy} r="1.5" fill={color} className="opacity-0 hover:opacity-100 transition-opacity" />;
-                        })}
-                    </svg>
-                </div>
-            );
-        };
-
-        const SimpleBarChart = ({ data, color }) => {
-            if (!data || data.length === 0) return null;
-            const max = Math.max(...data) || 1;
-            return (
-                <div className="h-full w-full flex items-end gap-1">
-                    {data.map((val, i) => {
-                        const h = `${(val / max) * 100}%`;
-                        return <div key={i} className="flex-1 bg-slate-100 rounded-sm relative group"><div className={`absolute bottom-0 w-full rounded-sm ${color} transition-all duration-500`} style={{ height: h }}></div></div>;
-                    })}
-                </div>
-            );
-        };
-
-        const MOCK_KPI_DATA = Array.from({ length: 22 }, (_, i) => ({
-            date: new Date(2025, 9, 9 + i).toISOString().split('T')[0],
-            landingPage: { views: 400 + Math.random()*200, conversions: 15 + Math.random()*20 },
-            channels: { popup: { views: 300, newMembers: 5 + Math.random()*5 } },
-            metaAdGroups: [
-                { name: 'Ad Group (PRO - Gryter)', spend: 150 + Math.random()*300, newMembers: Math.random()>0.3?Math.floor((150+Math.random()*300)/(10+Math.random()*40)):0, impressions: 2000, clicks: 40, frequency: 1.2 },
-                { name: 'Ad Group (LUX - Kniver)', spend: 100 + Math.random()*50, newMembers: Math.floor((100+Math.random()*50)/(10+Math.random()*5)), impressions: 1500, clicks: 35, frequency: 1.1 }
-            ]
-        }));
-
-        const KpiDashboard = () => {
-            const data = MOCK_KPI_DATA;
-            const config = CAMPAIGN_CONFIG;
-            const totals = data.reduce((acc, day) => {
-                acc.spend += day.metaAdGroups.reduce((s, g) => s + g.spend, 0);
-                acc.metaMembers += day.metaAdGroups.reduce((s, g) => s + g.newMembers, 0);
-                acc.popupMembers += day.channels.popup.newMembers;
-                return acc;
-            }, { spend: 0, metaMembers: 0, popupMembers: 0 });
-
-            const totalMembers = totals.metaMembers + totals.popupMembers;
-            const totalCPA = totals.metaMembers > 0 ? totals.spend / totals.metaMembers : 0;
-            const dailyMembers = data.map(d => d.metaAdGroups.reduce((s, g) => s + g.newMembers, 0) + d.channels.popup.newMembers);
-            const dailySpend = data.map(d => d.metaAdGroups.reduce((s, g) => s + g.spend, 0));
-
-            return (
-                <div className="space-y-6 animate-in fade-in duration-500">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><span className="text-slate-500 text-sm font-medium">Nye Medlemmer</span><div className="text-3xl font-bold text-slate-800 flex items-center justify-between">{totalMembers} <span className="text-indigo-500"><Icon name="users" size={20}/></span></div></div>
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><span className="text-slate-500 text-sm font-medium">Forbruk</span><div className="text-3xl font-bold text-slate-800 flex items-center justify-between">{formatCurrency(totals.spend)} <span className="text-blue-500"><Icon name="dollar-sign" size={20}/></span></div></div>
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><span className="text-slate-500 text-sm font-medium">CPA (Meta)</span><div className={`text-3xl font-bold ${totalCPA < config.RunningTargetCPA ? "text-green-600" : "text-amber-600"} flex items-center justify-between`}>{formatCurrency(totalCPA)} <span className="text-slate-400"><Icon name="activity" size={20}/></span></div></div>
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><span className="text-slate-500 text-sm font-medium">Konvertering</span><div className="text-3xl font-bold text-slate-800 flex items-center justify-between">12.4% <span className="text-teal-500"><Icon name="trending-up" size={20}/></span></div></div>
-                    </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm"><h3 className="text-sm font-bold text-slate-700 mb-6">Medlemsvekst per dag</h3><div className="h-48 w-full"><SimpleLineChart data={dailyMembers} color="#6366f1" /></div></div>
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm"><h3 className="text-sm font-bold text-slate-700 mb-6">Forbruk per dag</h3><div className="h-48 w-full"><SimpleBarChart data={dailySpend} color="bg-blue-500" /></div></div>
-                    </div>
-                </div>
-            );
-        };
-
         // --- APP ---
         const App = () => {
             const [activeTab, setActiveTab] = useState('calendar');
@@ -282,7 +206,7 @@
             const [visibleTypes, setVisibleTypes] = useState(Object.keys(TASK_TYPES));
             const [previewImage, setPreviewImage] = useState(null); 
             
-            const [isPreviewLocked, setIsPreviewLocked] = useState(false); // FIX: Lås-state for mobil
+            const [isPreviewLocked, setIsPreviewLocked] = useState(false);
 
             const fileInputRef = useRef(null);
             const backupInputRef = useRef(null);
@@ -453,7 +377,6 @@
             const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
             const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
             
-            // --- FIX: SIKRER DATO-SJEKK ---
             const calculateProgress = () => {
                 const year = currentDate.getFullYear();
                 const month = currentDate.getMonth();
@@ -462,9 +385,8 @@
                     if (!c.date) return false;
                     const parts = c.date.split('-');
                     if (parts.length !== 3) return false;
-                    // c.date er "YYYY-MM-DD"
                     const cYear = parseInt(parts[0], 10);
-                    const cMonth = parseInt(parts[1], 10) - 1; // JS months 0-11
+                    const cMonth = parseInt(parts[1], 10) - 1;
                     return cYear === year && cMonth === month;
                 });
                 
@@ -472,7 +394,6 @@
                 let completedTasks = 0;
 
                 currentMonthCampaigns.forEach(c => {
-                      // Ta hensyn til filteret!
                       const visibleTasks = (c.tasks || []).filter(t => visibleTypes.includes(t.type || 'ADMIN'));
                       totalTasks += visibleTasks.length;
                       completedTasks += visibleTasks.filter(t => t.completed).length;
@@ -569,10 +490,10 @@
                                                                 <Icon name={conf.icon} size={12} color={conf.color.split(' ')[0]} />
                                                                 <span className="truncate flex-1">{t.time}</span>
                                                                 
-                                                                {/* BILDE-IKON - MED 5px SAFE ZONE & GLOBAL POP-OUT */}
+                                                                {/* BILDE-IKON */}
                                                                 {formattedImgUrl && (
                                                                     <div 
-                                                                        className="relative has-image p-[5px] -m-[5px] z-10" // Safe Zone (5px)
+                                                                        className="relative has-image p-[5px] -m-[5px] z-10"
                                                                         onClick={(e) => { 
                                                                             e.stopPropagation(); 
                                                                             if (window.matchMedia("(pointer: coarse)").matches) {
@@ -731,7 +652,7 @@
                                 })}
                             </div>
                         </div>
-                    ) : <KpiDashboard />}
+                    ) : <window.AnalyseDashboard />}
 
                     <footer className="mt-12 py-6 border-t border-slate-200 text-center text-xs text-slate-400">
                         &copy; 2026 Me & Max AS - Versjon 2.1 | Mike & his friend Gemini
