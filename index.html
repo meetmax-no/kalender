@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeetMax Manager v27 (Image Fix)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { background-color: #f8fafc; font-family: sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .btn-hover { transition: transform 0.1s; }
+        .btn-hover:active { transform: scale(0.98); }
+        
+        /* DESKTOP HOVER: Viser bildet når man holder musen over */
+        @media (min-width: 768px) {
+            .has-image:hover .image-popover { 
+                display: block; 
+                animation: fadeIn 0.2s;
+            }
+        }
+        
+        /* MOBIL: Skjul hover-effekt, bruk klikk i stedet */
+        @media (max-width: 767px) {
+            .image-popover { display: none !important; }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px) translateX(-50%); }
+            to { opacity: 1; transform: translateY(0) translateX(-50%); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const Icon = ({ name, size, color, className }) => {
+            const ref = useRef(null);
+            useEffect(() => {
+                if (window.lucide && ref.current) {
+                    ref.current.innerHTML = '';
+                    const i = document.createElement('i');
+                    i.setAttribute('data-lucide', name);
+                    if (color) i.className = color;
+                    if (className) i.classList.add(...className.split(' '));
+                    i.style.width = (size || 16) + 'px';
+                    i.style.height = (size || 16) + 'px';
+                    i.style.display = 'block'; 
+                    ref.current.appendChild(i);
+                    window.lucide.createIcons({ root: ref.current, nameAttr: 'data-lucide' });
+                }
+            }, [name, size, color, className]); 
+            return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}></span>;
+        };
+
+        const JSONBIN_API_KEY = '$2a$10$POD7waxX5380sIzCicwFUejlDXC5wrch8IRkc409YItsJWSTnvpxO';
+        const JSONBIN_BIN_ID = '68d6a28943b1c97be951089f';
+
+        const HOLIDAYS = {
+            '2026-01-01': '1. Nyttårsdag', '2026-03-29': 'Palmesøndag', '2026-04-02': 'Skjærtorsdag', '2026-04-03': 'Langfredag', '2026-04-05': '1. Påskedag', '2026-04-06': '2. Påskedag',
+            '2026-05-01': 'Offentlig høytidsdag', '2026-05-14': 'Kristi Himmelfart', '2026-05-17': 'Grunnlovsdag', '2026-05-24': '1. Pinsedag', '2026-05-25': '2. Pinsedag',
+            '2026-12-25': '1. Juledag', '2026-12-26': '2. Juledag',
+            '2027-01-01': '1. Nyttårsdag', '2027-03-21': 'Palmesøndag', '2027-03-25': 'Skjærtorsdag', '2027-03-26': 'Langfredag', '2027-03-28': '1. Påskedag', '2027-03-29': '2. Påskedag',
+            '2027-05-01': 'Offentlig høytidsdag', '2027-05-06': 'Kristi Himmelfart', '2027-05-16': '1. Pinsedag', '2027-05-17': '17. mai / 2. Pinsedag', '2027-12-25': '1. Juledag', '2027-12-26': '2. Juledag'
+        };
+
+        const COMMERCIAL_DAYS = {
+            '2026-02-08': 'Morsdag', '2026-02-14': 'Valentines Day', '2026-02-15': 'Fastelavn', '2026-02-16': 'Vinterferie (Uke 8)', '2026-02-23': 'Vinterferie (Uke 9)',
+            '2026-10-31': 'Halloween', '2026-11-27': 'Black Friday', '2026-11-30': 'Cyber Monday'
+        };
+
+        const TASK_TYPES = {
+            'FB_ORG': { label: 'FB Organisk', icon: 'facebook', color: 'text-blue-600', bg: 'bg-blue-100', defaultTime: '10:00' },
+            'FB_BOOST': { label: 'FB Boost (Ads)', icon: 'megaphone', color: 'text-green-600', bg: 'bg-green-100', defaultTime: '12:00' },
+            'IG_POST': { label: 'Instagram', icon: 'instagram', color: 'text-pink-600', bg: 'bg-pink-100', defaultTime: '18:00' },
+            'DM': { label: 'Nyhetsbrev', icon: 'mail', color: 'text-amber-600', bg: 'bg-amber-100', defaultTime: '14:00' },
+            'MEETING': { label: 'Møte', icon: 'briefcase', color: 'text-teal-600', bg: 'bg-teal-100', defaultTime: '10:00' },
+            'ADMIN': { label: 'Admin', icon: 'lock', color: 'text-slate-600', bg: 'bg-slate-100', defaultTime: '09:00' },
+            'OTHER': { label: 'Annet', icon: 'info', color: 'text-violet-600', bg: 'bg-violet-100', defaultTime: '12:00' }
+        };
+
+        const CAMPAIGN_CONFIG = { dailyBudget: 500, totalBudget: 15000, BudgetTargetCPA: 50, RunningTargetCPA: 30 };
+        const formatCurrency = (num) => (num || 0).toLocaleString('nb-NO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' kr';
+        const formatAdGroupName = (name) => (name || '').replace('Ad Group', 'AG').replace('(', '- ').replace(')', '').trim();
+
+        const formatImageUrl = (url) => {
+            if (!url) return '';
+            let idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+            if (!idMatch) { idMatch = url.match(/id=([a-zA-Z0-9_-]+)/); }
+            if (idMatch && idMatch[1]) { return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w800`; }
+            if (url.includes('dropbox.com')) { return url.replace('dl=0', 'raw=1'); }
+            return url;
+        };
+
+        const downloadBackup = (data) => {
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.setAttribute('download', `meetmax_backup_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        const downloadCSV = (campaigns) => {
+            let csvContent = "\uFEFFDato,Tid,Type,Kampanje,Beskrivelse,Status\n";
+            const sortedCampaigns = [...campaigns].sort((a, b) => new Date(a.date) - new Date(b.date));
+            sortedCampaigns.forEach(c => {
+                if (c.tasks && c.tasks.length > 0) {
+                    c.tasks.forEach(t => {
+                        const config = TASK_TYPES[t.type] || TASK_TYPES['ADMIN'];
+                        const status = t.completed ? "Ferdig" : "Planlagt";
+                        const cleanTitle = (c.title || "").replace(/,/g, ' - ').replace(/"/g, '""');
+                        const cleanDesc = (t.customTitle || config.label).replace(/,/g, ' - ').replace(/"/g, '""');
+                        csvContent += `${c.date},${t.time},${config.label},"${cleanTitle}","${cleanDesc}",${status}\n`;
+                    });
+                }
+            });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.setAttribute('download', `meetmax_plan_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        const generateICS = (campaign) => {
+            const dateStr = campaign.date.replace(/-/g, '');
+            let icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//MeetMax//CampaignManager//NO\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\n`;
+            campaign.tasks.forEach(task => {
+                const config = TASK_TYPES[task.type] || TASK_TYPES['ADMIN'];
+                const timeStr = (task.time || config.defaultTime).replace(':', '') + '00';
+                const startDateTime = `${dateStr}T${timeStr}`;
+                let hour = parseInt(task.time.split(':')[0]);
+                let min = parseInt(task.time.split(':')[1]);
+                if (min >= 30) { hour += 1; min -= 30; } else { min += 30; }
+                const endHour = hour.toString().padStart(2, '0');
+                const endMin = min.toString().padStart(2, '0');
+                const endDateTime = `${dateStr}T${endHour}${endMin}00`;
+                const summary = `${config.label}: ${campaign.title}`;
+                const description = (task.customTitle || campaign.title) + (task.imageUrl ? `\n\nBilde: ${task.imageUrl}` : '');
+                icsContent += `BEGIN:VEVENT\nSUMMARY:${summary}\nDTSTART:${startDateTime}\nDTEND:${endDateTime}\nDESCRIPTION:${description}\nSTATUS:CONFIRMED\nEND:VEVENT\n`;
+            });
+            icsContent += "END:VCALENDAR";
+            return icsContent;
+        };
+
+        const downloadICS = (campaign) => {
+            const icsData = generateICS(campaign);
+            const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.setAttribute('download', `${campaign.title.replace(/\s+/g, '_')}.ics`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        const parseICS = (icsContent) => {
+            const events = [];
+            const lines = icsContent.split(/\r\n|\n|\r/);
+            let currentEvent = null;
+            lines.forEach(line => {
+                if (line.startsWith('BEGIN:VEVENT')) { currentEvent = {}; } 
+                else if (line.startsWith('END:VEVENT')) { if (currentEvent) events.push(currentEvent); currentEvent = null; } 
+                else if (currentEvent) {
+                    const [key, ...valueParts] = line.split(':');
+                    const value = valueParts.join(':');
+                    if (key === 'SUMMARY') currentEvent.summary = value;
+                    if (key.startsWith('DTSTART')) currentEvent.start = value;
+                }
+            });
+            return events.map(event => {
+                const rawDate = event.start.split('T')[0]; 
+                const rawTime = event.start.includes('T') ? event.start.split('T')[1].substring(0, 4) : '1200';
+                const year = rawDate.substring(0, 4);
+                const month = rawDate.substring(4, 6);
+                const day = rawDate.substring(6, 8);
+                const hour = rawTime.substring(0, 2);
+                const minute = rawTime.substring(2, 4);
+                return {
+                    title: event.summary || 'Importert hendelse',
+                    date: `${year}-${month}-${day}`,
+                    time: `${hour}:${minute}`,
+                    type: 'OTHER'
+                };
+            });
+        };
+
+        // --- DASHBOARD CHARTS ---
+        const SimpleLineChart = ({ data, color }) => {
+            if (!data || data.length === 0) return null;
+            const max = Math.max(...data) || 1;
+            const pointsStr = data.map((val, i) => {
+                const x = (i / (data.length - 1 || 1)) * 100;
+                const y = 100 - ((val / max) * 100);
+                return `${x},${y}`;
+            }).join(' ');
+            return (
+                <div className="h-full w-full flex items-end">
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+                        <polyline fill="none" stroke={color} strokeWidth="2" points={pointsStr} vectorEffect="non-scaling-stroke" />
+                        {data.map((val, i) => {
+                            const cx = (i / (data.length - 1 || 1)) * 100;
+                            const cy = 100 - ((val / max) * 100);
+                            return <circle key={i} cx={cx} cy={cy} r="1.5" fill={color} className="opacity-0 hover:opacity-100 transition-opacity" />;
+                        })}
+                    </svg>
+                </div>
+            );
+        };
+
+        const SimpleBarChart = ({ data, color }) => {
+            if (!data || data.length === 0) return null;
+            const max = Math.max(...data) || 1;
+            return (
+                <div className="h-full w-full flex items-end gap-1">
+                    {data.map((val, i) => {
+                        const h = `${(val / max) * 100}%`;
+                        return <div key={i} className="flex-1 bg-slate-100 rounded-sm relative group"><div className={`absolute bottom-0 w-full rounded-sm ${color} transition-all duration-500`} style={{ height: h }}></div></div>;
+                    })}
+                </div>
+            );
+        };
+
+        const MOCK_KPI_DATA = Array.from({ length: 22 }, (_, i) => ({
+            date: new Date(2025, 9, 9 + i).toISOString().split('T')[0],
+            landingPage: { views: 400 + Math.random()*200, conversions: 15 + Math.random()*20 },
+            channels: { popup: { views: 300, newMembers: 5 + Math.random()*5 } },
+            metaAdGroups: [
+                { name: 'Ad Group (PRO - Gryter)', spend: 150 + Math.random()*300, newMembers: Math.random()>0.3?Math.floor((150+Math.random()*300)/(10+Math.random()*40)):0, impressions: 2000, clicks: 40, frequency: 1.2 },
+                { name: 'Ad Group (LUX - Kniver)', spend: 100 + Math.random()*50, newMembers: Math.floor((100+Math.random()*50)/(10+Math.random()*5)), impressions: 1500, clicks: 35, frequency: 1.1 }
+            ]
+        }));
+
+        const KpiDashboard = () => {
+            const data = MOCK_KPI_DATA;
+            const config = CAMPAIGN_CONFIG;
+            const totals = data.reduce((acc, day) => {
+                acc.spend += day.metaAdGroups.reduce((s, g) => s + g.spend, 0);
+                acc.metaMembers += day.metaAdGroups.reduce((s, g) => s + g.newMembers, 0);
+                acc.popupMembers += day.channels.popup.newMembers;
+                return acc;
+            }, { spend: 0, metaMembers: 0, popupMembers: 0 });
+
+            const totalMembers = totals.metaMembers + totals.popupMembers;
+            const totalCPA = totals.metaMembers > 0 ? totals.spend / totals.metaMembers : 0;
+            const dailyMembers = data.map(d => d.metaAdGroups.reduce((s, g) => s + g.newMembers, 0) + d.channels.popup.newMembers);
+            const dailySpend = data.map(d => d.metaAdGroups.reduce((s, g) => s + g.spend, 0));
+
+            return (
+                <div className="space-y-6 animate-in fade-in duration-500">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><span className="text-slate-500 text-sm font-medium">Nye Medlemmer</span><div className="text-3xl font-bold text-slate-800 flex items-center justify-between">{totalMembers} <span className="text-indigo-500"><Icon name="users" size={20}/></span></div></div>
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><span className="text-slate-500 text-sm font-medium">Forbruk</span><div className="text-3xl font-bold text-slate-800 flex items-center justify-between">{formatCurrency(totals.spend)} <span className="text-blue-500"><Icon name="dollar-sign" size={20}/></span></div></div>
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><span className="text-slate-500 text-sm font-medium">CPA (Meta)</span><div className={`text-3xl font-bold ${totalCPA < config.RunningTargetCPA ? "text-green-600" : "text-amber-600"} flex items-center justify-between`}>{formatCurrency(totalCPA)} <span className="text-slate-400"><Icon name="activity" size={20}/></span></div></div>
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"><span className="text-slate-500 text-sm font-medium">Konvertering</span><div className="text-3xl font-bold text-slate-800 flex items-center justify-between">12.4% <span className="text-teal-500"><Icon name="trending-up" size={20}/></span></div></div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm"><h3 className="text-sm font-bold text-slate-700 mb-6">Medlemsvekst per dag</h3><div className="h-48 w-full"><SimpleLineChart data={dailyMembers} color="#6366f1" /></div></div>
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm"><h3 className="text-sm font-bold text-slate-700 mb-6">Forbruk per dag</h3><div className="h-48 w-full"><SimpleBarChart data={dailySpend} color="bg-blue-500" /></div></div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- APP ---
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('calendar');
+            const [currentDate, setCurrentDate] = useState(new Date()); 
+            const [campaigns, setCampaigns] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [saving, setSaving] = useState(false);
+            const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+            const [modalType, setModalType] = useState(null); 
+            const [selectedCampaign, setSelectedCampaign] = useState(null);
+            const [editTitle, setEditTitle] = useState('');
+            const [editDate, setEditDate] = useState('');
+            const [editTasks, setEditTasks] = useState([]); 
+            const [activeDay, setActiveDay] = useState(null);
+            
+            const [globalTaskType, setGlobalTaskType] = useState(null);
+            const [globalDate, setGlobalDate] = useState('');
+            const [globalTime, setGlobalTime] = useState('');
+            const [globalDescription, setGlobalDescription] = useState('');
+            const [globalImage, setGlobalImage] = useState(''); 
+            
+            const [visibleTypes, setVisibleTypes] = useState(Object.keys(TASK_TYPES));
+            const [previewImage, setPreviewImage] = useState(null); // MOBIL PREVIEW MODAL
+            
+            const fileInputRef = useRef(null);
+            const backupInputRef = useRef(null);
+
+            const loadData = async () => {
+                setLoading(true);
+                try {
+                    const res = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, { headers: { 'X-Master-Key': JSONBIN_API_KEY } });
+                    if (res.ok) {
+                        const json = await res.json();
+                        const loadedCampaigns = json.record && Array.isArray(json.record.campaigns) ? json.record.campaigns : [];
+                        setCampaigns(loadedCampaigns);
+                        setIsDataLoaded(true); 
+                    } else { 
+                        console.error("Feil ved lasting:", res.status);
+                        alert("Kunne ikke laste data fra skyen. Sjekk internett.");
+                    }
+                } catch (e) { 
+                    console.error("Nettverksfeil:", e); 
+                    alert("Nettverksfeil. Prøv å laste siden på nytt.");
+                } 
+                finally { setLoading(false); }
+            };
+
+            const saveData = async (newCampaigns) => {
+                if (!isDataLoaded) return;
+                setSaving(true);
+                try {
+                    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY },
+                        body: JSON.stringify({ campaigns: newCampaigns, updatedAt: new Date() })
+                    });
+                } catch (e) { console.error("Save error:", e); } 
+                finally { setSaving(false); }
+            };
+
+            useEffect(() => { loadData(); }, []);
+            
+            const updateCampaigns = (newData) => { 
+                setCampaigns(newData); 
+                saveData(newData); 
+            };
+
+            const toggleFilter = (type) => {
+                setVisibleTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
+            };
+
+            const handleRestoreBackup = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const content = JSON.parse(e.target.result);
+                        if (Array.isArray(content)) {
+                            if (confirm(`Vil du overskrive alt med ${content.length} kampanjer fra backup?`)) {
+                                setIsDataLoaded(true);
+                                updateCampaigns(content);
+                            }
+                        } else { alert("Ugyldig backup-fil."); }
+                    } catch (err) { alert("Kunne ikke lese backup-filen."); }
+                };
+                reader.readAsText(file);
+                event.target.value = null;
+            };
+
+            const handleFileUpload = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const content = e.target.result;
+                        const importedEvents = parseICS(content);
+                        const newCampaigns = importedEvents.map(event => ({
+                            id: Date.now() + Math.random(),
+                            title: event.title,
+                            date: event.date,
+                            type: 'CAMPAIGN',
+                            tasks: [{ id: Date.now() + Math.random(), type: event.type, time: event.time, completed: false, customTitle: event.title }]
+                        }));
+                        updateCampaigns([...campaigns, ...newCampaigns]);
+                        alert(`Importerte ${newCampaigns.length} hendelser!`);
+                    } catch (error) { alert("Kunne ikke lese ICS fil."); }
+                };
+                reader.readAsText(file);
+                event.target.value = null; 
+            };
+
+            const handleEditClick = (campaign) => { 
+                setSelectedCampaign(campaign); 
+                setEditTitle(campaign.title); 
+                setEditDate(campaign.date); 
+                setEditTasks(JSON.parse(JSON.stringify(campaign.tasks || [])));
+                setModalType('edit'); 
+            };
+            
+            const handleTaskTimeChange = (taskId, newTime) => {
+                setEditTasks(prev => prev.map(t => t.id === taskId ? { ...t, time: newTime } : t));
+            };
+            
+            const handleTaskImageChange = (taskId, newUrl) => {
+                setEditTasks(prev => prev.map(t => t.id === taskId ? { ...t, imageUrl: newUrl } : t));
+            };
+
+            const handleDayManageClick = (day) => { setActiveDay(day); setModalType('manageDay'); };
+            const handleLegendAddClick = (type) => {
+                setGlobalTaskType(type);
+                const config = TASK_TYPES[type];
+                setGlobalTime(config.defaultTime);
+                setGlobalDescription(config.label);
+                setGlobalImage('');
+                
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                
+                setGlobalDate(`${year}-${month}-${day}`);
+                
+                setModalType('addGlobalTask');
+            };
+
+            const confirmEdit = () => {
+                if (selectedCampaign && editTitle && editDate) {
+                    const updatedCampaigns = campaigns.map(c => {
+                        if (c.id === selectedCampaign.id) {
+                            return { ...c, title: editTitle, date: editDate, tasks: editTasks };
+                        }
+                        return c;
+                    });
+                    updateCampaigns(updatedCampaigns);
+                    setModalType(null);
+                }
+            };
+            const confirmDelete = (idToDelete) => { if (idToDelete) updateCampaigns(campaigns.filter(c => c.id !== idToDelete)); };
+            
+            const confirmGlobalAdd = () => {
+                if (!globalTaskType || !globalDate) return;
+                
+                const newTask = {
+                    id: Date.now() + '_' + Math.random(),
+                    type: globalTaskType,
+                    time: globalTime || '12:00',
+                    completed: false,
+                    customTitle: globalDescription,
+                    imageUrl: globalImage 
+                };
+                
+                const newCampaign = {
+                    id: Date.now(),
+                    title: globalDescription,
+                    date: globalDate,
+                    type: 'CAMPAIGN',
+                    tasks: [newTask]
+                };
+                
+                updateCampaigns([...campaigns, newCampaign]);
+                setModalType(null);
+            };
+
+            const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+            const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+            
+            const calculateProgress = () => {
+                const currentMonthCampaigns = campaigns.filter(c => {
+                    const cDate = new Date(c.date);
+                    if (isNaN(cDate.getTime())) return false;
+                    return cDate.getMonth() === currentDate.getMonth() && cDate.getFullYear() === currentDate.getFullYear();
+                });
+                const totalTasks = currentMonthCampaigns.reduce((acc, c) => acc + (c.tasks || []).length, 0);
+                const completedTasks = currentMonthCampaigns.reduce((acc, c) => acc + (c.tasks || []).filter(t => t.completed).length, 0);
+                return totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+            };
+            const progress = calculateProgress();
+
+            const toggleTask = (campaignId, taskId) => {
+                updateCampaigns(campaigns.map(c => {
+                    if (c.id === campaignId) return { ...c, tasks: (c.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t) };
+                    return c;
+                }));
+            };
+
+            const monthNames = ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Desember"];
+            const getDaysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+            const getFirstDay = (y, m) => { let d = new Date(y, m, 1).getDay(); return d === 0 ? 6 : d - 1; };
+            const getWeekNumber = (d) => {
+                d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+                d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+                const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+                return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+            };
+
+            const renderCalendar = () => {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const daysNum = getDaysInMonth(year, month);
+                const firstDay = getFirstDay(year, month);
+                const days = [];
+
+                for (let i = 0; i < firstDay; i++) {
+                    days.push(<div key={`empty-${i}`} className="h-60 bg-slate-50 border border-slate-100"></div>);
+                }
+
+                for (let d = 1; d <= daysNum; d++) {
+                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const dayCamps = campaigns.filter(c => c.date === dateStr);
+                    const isToday = new Date().toDateString() === new Date(year, month, d).toDateString();
+                    
+                    const holidayName = HOLIDAYS[dateStr];
+                    const commercialName = COMMERCIAL_DAYS[dateStr];
+                    
+                    const hasVisibleTasks = (c) => {
+                        if (!c.tasks || c.tasks.length === 0) return true; 
+                        return c.tasks.some(t => visibleTypes.includes(t.type || 'ADMIN'));
+                    };
+                    const visibleDayCamps = dayCamps.filter(hasVisibleTasks);
+                    const allTasksDone = visibleDayCamps.length > 0 && visibleDayCamps.every(c => (c.tasks || []).filter(t => visibleTypes.includes(t.type || 'ADMIN')).every(t => t.completed));
+                    
+                    let dayStyle = "bg-white border-slate-200"; 
+                    if (allTasksDone) dayStyle = "bg-emerald-50 border-emerald-300"; 
+                    else if (isToday) dayStyle = "bg-blue-50 border-blue-400"; 
+
+                    const dateObj = new Date(year, month, d);
+                    const isMonday = dateObj.getDay() === 1;
+                    const weekNum = getWeekNumber(dateObj);
+
+                    days.push(
+                        <div key={d} className={`h-60 border p-2 relative group hover:shadow-md transition-all ${dayStyle}`}>
+                            {isMonday && <div className="absolute top-1 left-1 bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded">Uke {weekNum}</div>}
+                            <div className="flex justify-between items-start mb-2 mt-4"> 
+                                <div className="flex flex-col">
+                                    <div className="flex items-center gap-1">
+                                        <span className={`text-sm font-bold ${holidayName ? 'text-red-600' : commercialName ? 'text-blue-600' : isToday ? 'text-blue-600' : 'text-slate-700'}`}>{d}</span>
+                                        {allTasksDone && <Icon name="check-circle" size={14} color="text-emerald-500" />}
+                                    </div>
+                                    {holidayName && <span className="text-[10px] font-medium text-red-500 leading-tight mt-1">{holidayName}</span>}
+                                    {commercialName && <span className="text-[10px] font-medium text-blue-600 leading-tight mt-1">{commercialName}</span>}
+                                </div>
+                                {visibleDayCamps.length > 0 && (
+                                    <button onClick={() => { setActiveDay(d); setModalType('manageDay'); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity" title="Slett"><Icon name="trash-2" size={16} /></button>
+                                )}
+                            </div>
+                            <div className="space-y-2 overflow-y-auto max-h-[160px] custom-scrollbar">
+                                {visibleDayCamps.map(c => (
+                                    <div key={c.id} className={`p-2 rounded border shadow-sm bg-white text-xs ${allTasksDone ? 'opacity-70' : ''} group/card relative`}>
+                                        <div className="font-bold text-slate-800 mb-1 border-b pb-1 flex justify-between items-center">
+                                            <span onClick={() => { handleEditClick(c); }} className="cursor-pointer hover:text-indigo-600 truncate flex-1">{c.title}</span>
+                                            <div className="flex gap-1"><button onClick={(e) => { e.stopPropagation(); downloadICS(c); }} className="opacity-0 group-hover/card:opacity-100 text-slate-400 hover:text-indigo-500 transition-opacity" title="Last ned .ics"><Icon name="download" size={12} /></button></div>
+                                        </div>
+                                        <div>
+                                            {(c.tasks || [])
+                                                .filter(t => visibleTypes.includes(t.type || 'ADMIN'))
+                                                .map(t => {
+                                                    const conf = TASK_TYPES[t.type] || TASK_TYPES['ADMIN'];
+                                                    const formattedImgUrl = formatImageUrl(t.imageUrl);
+                                                    
+                                                    return (
+                                                        <div key={t.id} className="mt-1">
+                                                            <div onClick={() => toggleTask(c.id, t.id)} className={`flex items-center gap-2 cursor-pointer ${t.completed ? 'opacity-50 line-through' : ''}`}>
+                                                                <Icon name={conf.icon} size={12} color={conf.color.split(' ')[0]} />
+                                                                <span className="truncate flex-1">{t.time}</span>
+                                                                
+                                                                {/* BILDE-IKON - NÅ MED BÅDE HOVER (DESKTOP) OG KLIKK (MOBIL) */}
+                                                                {formattedImgUrl && (
+                                                                    <div 
+                                                                        className="relative has-image" 
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            // Sjekk om det er mobil (touch)
+                                                                            if (window.matchMedia("(pointer: coarse)").matches) {
+                                                                                setPreviewImage(formattedImgUrl);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <Icon name="camera" size={12} color="text-slate-400" />
+                                                                        <div className="image-popover absolute z-50 bottom-full left-1/2 -translate-x-1/2 bg-white p-1 rounded shadow-lg border w-48 hidden group-hover:block pointer-events-none">
+                                                                            <img src={formattedImgUrl} alt="Preview" className="w-full h-auto rounded" />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                }
+                return days;
+            };
+
+            if (loading) return <div className="h-screen flex items-center justify-center text-slate-500"><Icon name="loader-2" className="animate-spin" /> Laster...</div>;
+
+            return (
+                <div className="max-w-7xl mx-auto p-4 bg-slate-50 min-h-screen">
+                    {/* GLOBAL PREVIEW FOR MOBIL */}
+                    {previewImage && (
+                        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-[fade-in_0.2s] cursor-pointer" onClick={() => setPreviewImage(null)}>
+                            <div className="relative max-w-4xl max-h-[90vh]">
+                                <img src={previewImage} alt="Preview" className="w-full h-full object-contain rounded-lg shadow-2xl" />
+                                <p className="text-white text-center mt-2 text-sm">Trykk hvor som helst for å lukke</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODALER (Forkortet) */}
+                    {modalType && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm">
+                                {modalType === 'addGlobalTask' && (
+                                    <>
+                                        <h3 className="font-bold text-lg mb-4">Legg til {TASK_TYPES[globalTaskType]?.label}</h3>
+                                        <div className="space-y-4">
+                                            <div><label className="block text-xs font-bold text-slate-500">Beskrivelse</label><input className="w-full border p-2 rounded" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} /></div>
+                                            <div><label className="block text-xs font-bold text-slate-500">Bilde-URL (Google Drive / Nett)</label><input className="w-full border p-2 rounded" value={globalImage} onChange={e => setGlobalImage(e.target.value)} placeholder="https://..." /></div>
+                                            <div><label className="block text-xs font-bold text-slate-500">Dato</label><input type="date" className="w-full border p-2 rounded" value={globalDate} onChange={e => setGlobalDate(e.target.value)} /></div>
+                                            <div><label className="block text-xs font-bold text-slate-500">Tid</label><input type="time" className="w-full border p-2 rounded" value={globalTime} onChange={e => setGlobalTime(e.target.value)} /></div>
+                                            <div className="flex justify-end gap-2"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button><button onClick={confirmGlobalAdd} className="px-4 py-2 bg-indigo-600 text-white rounded">Legg til</button></div>
+                                        </div>
+                                    </>
+                                )}
+                                {modalType === 'edit' && (<><h3 className="font-bold text-lg mb-4">Rediger Aktivitet</h3><div className="space-y-4 mb-4"><div><label className="block text-xs font-bold text-slate-500 uppercase">Tittel</label><input className="w-full border p-2 rounded" value={editTitle} onChange={e => setEditTitle(e.target.value)} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Flytt til Dato</label><input type="date" className="w-full border p-2 rounded" value={editDate} onChange={e => setEditDate(e.target.value)} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Oppgaver</label><div className="max-h-40 overflow-y-auto border border-slate-100 rounded p-1">{editTasks.map(task => { const conf = TASK_TYPES[task.type] || TASK_TYPES['ADMIN']; return (<div key={task.id} className="mb-2 p-2 bg-slate-50 rounded border border-slate-200"><div className="flex items-center gap-2 mb-1"><Icon name={conf.icon} size={14} color={conf.color.split(' ')[0]} /><span className="text-xs font-bold">{conf.label}</span></div><div className="flex gap-2"><input type="time" value={task.time} onChange={(e) => handleTaskTimeChange(task.id, e.target.value)} className="border rounded px-1 py-0.5 text-xs w-16"/><input type="text" value={task.imageUrl || ''} onChange={(e) => handleTaskImageChange(task.id, e.target.value)} className="border rounded px-1 py-0.5 text-xs flex-1" placeholder="Bilde URL..."/></div></div>);})}</div></div></div><div className="flex justify-end gap-2"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button><button onClick={confirmEdit} className="px-4 py-2 bg-indigo-600 text-white rounded">Lagre</button></div></>)}
+                                {modalType === 'manageDay' && (<><h3 className="font-bold text-lg mb-4">Slett aktiviteter</h3><div className="max-h-60 overflow-y-auto space-y-2 mb-4">{campaigns.filter(c => c.date === `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(activeDay).padStart(2,'0')}`).map(c => (<div key={c.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border"><span>{c.title}</span><button onClick={() => updateCampaigns(campaigns.filter(x => x.id !== c.id))} className="text-red-500 text-sm font-bold">SLETT</button></div>))}</div><div className="flex justify-end"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Lukk</button></div></>)}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* HEADER */}
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                        <div className="mb-4 md:mb-0">
+                            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-3"><span className="bg-indigo-600 text-white p-2 rounded-lg"><Icon name="calendar" size={24}/></span> MeetMax Manager</h1>
+                            <div className="flex items-center gap-3 mt-1 ml-1">
+                                <p className="text-slate-500 text-sm">Oversikt for <span className="font-semibold text-indigo-600">Max's Utvalgte</span></p>
+                                {saving ? <span className="text-xs text-orange-500 flex items-center gap-1"><Icon name="loader-2" size={10} className="animate-spin"/> Lagrer...</span> : <span className="text-xs text-green-600 flex items-center gap-1"><Icon name="cloud" size={10} /> Koblet til skyen</span>}
+                                {!isDataLoaded && <span className="text-xs text-red-500 flex items-center gap-1"><Icon name="alert-triangle" size={10} /> OFFLINE</span>}
+                            </div>
+                        </div>
+                        
+                        <div className="flex gap-2 mr-auto ml-4">
+                             <button onClick={() => downloadBackup(campaigns)} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1"><Icon name="download" size={12}/> Backup</button>
+                             <button onClick={() => downloadCSV(campaigns)} className="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-3 py-1 rounded flex items-center gap-1" title="Eksporter til Excel"><Icon name="file-spreadsheet" size={12}/> CSV</button>
+                             <label className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1 cursor-pointer">
+                                <Icon name="upload" size={12}/> Restore
+                                <input type="file" accept=".json" className="hidden" ref={backupInputRef} onChange={handleRestoreBackup} />
+                             </label>
+                        </div>
+
+                        <div className="bg-slate-100 p-1 rounded-lg flex items-center">
+                            <button onClick={() => setActiveTab('calendar')} className={`px-4 py-2 rounded text-sm font-bold ${activeTab === 'calendar' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Kalender</button>
+                            <button onClick={() => setActiveTab('analysis')} className={`px-4 py-2 rounded text-sm font-bold ${activeTab === 'analysis' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Analyse</button>
+                        </div>
+                    </div>
+
+                    {/* INNHOLD */}
+                    {activeTab === 'calendar' ? (
+                        <div>
+                            {/* Kalender Header */}
+                            <div className="flex justify-between items-end mb-4">
+                                <div className="hidden md:block">
+                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Månedens Fremdrift</span>
+                                    <div className="flex items-center gap-3 mt-1">
+                                        <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 transition-all duration-500" style={{width: `${progress}%`}}></div></div>
+                                        <span className="font-bold text-sm text-emerald-600">{progress}%</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <label className="flex items-center gap-2 bg-white p-2 rounded shadow-sm cursor-pointer hover:bg-slate-50 text-sm font-medium text-slate-600">
+                                        <Icon name="upload" size={16} /> <span>Import .ics</span>
+                                        <input type="file" accept=".ics" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+                                    </label>
+
+                                    <div className="flex items-center gap-2 bg-white p-2 rounded shadow-sm">
+                                        <button onClick={handlePrevMonth}><Icon name="chevron-left" /></button>
+                                        <span className="font-bold w-32 text-center">{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</span>
+                                        <button onClick={handleNextMonth}><Icon name="chevron-right" /></button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Grid */}
+                            <div className="grid grid-cols-7 gap-px bg-slate-200 border rounded-t overflow-hidden">
+                                {['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'].map(d => <div key={d} className="bg-white p-2 text-center font-bold text-xs text-slate-500 uppercase">{d}</div>)}
+                            </div>
+                            <div className="grid grid-cols-7 gap-px bg-slate-200 border-x border-b rounded-b overflow-hidden shadow-sm">
+                                {renderCalendar()}
+                            </div>
+
+                            {/* Legend / Knapper */}
+                            <div className="mt-8 flex flex-wrap gap-4 justify-center">
+                                {Object.entries(TASK_TYPES).map(([key, conf]) => {
+                                    const isVisible = visibleTypes.includes(key);
+                                    return (
+                                        <div key={key} className="flex items-center bg-white rounded-full border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-all">
+                                            <button 
+                                                onClick={() => toggleFilter(key)}
+                                                className={`flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors ${!isVisible ? 'opacity-40 grayscale' : ''}`}
+                                                title={isVisible ? "Skjul i kalender" : "Vis i kalender"}
+                                            >
+                                                <div className={`w-3 h-3 rounded border flex items-center justify-center ${isVisible ? 'bg-indigo-600 border-transparent' : 'border-slate-400 bg-transparent'}`}>
+                                                    {isVisible && <Icon name="check" size={8} className="text-white" />}
+                                                </div>
+                                                <Icon name={conf.icon} color={conf.color.split(' ')[0]} size={14} />
+                                                <span className="font-medium text-sm text-slate-700">{conf.label}</span>
+                                            </button>
+                                            
+                                            <div className="w-px h-4 bg-slate-200"></div>
+
+                                            <button 
+                                                onClick={() => handleLegendAddClick(key)}
+                                                className="px-2 py-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                                                title={`Legg til ny ${conf.label}`}
+                                            >
+                                                <Icon name="plus" size={14} />
+                                            </button>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    ) : <KpiDashboard />}
+
+                    <footer className="mt-12 py-6 border-t border-slate-200 text-center text-xs text-slate-400">
+                        &copy; 2026 Me & Max AS - Versjon 27.0 (Image Fix)
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
