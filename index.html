@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeetMax Manager v27 (Image Fix)</title>
+    <title>MeetMax Manager v2.2 (Global Fix)</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script src="src/config.js"></script>
 
     <style>
         body { background-color: #f8fafc; font-family: sans-serif; }
@@ -18,31 +21,41 @@
         .btn-hover { transition: transform 0.1s; }
         .btn-hover:active { transform: scale(0.98); }
         
-        /* DESKTOP HOVER: Viser bildet når man holder musen over */
-        @media (min-width: 768px) {
-            .has-image:hover .image-popover { 
-                display: block; 
-                animation: fadeIn 0.2s;
-            }
-        }
-        
-        /* MOBIL: Skjul hover-effekt, bruk klikk i stedet */
-        @media (max-width: 767px) {
-            .image-popover { display: none !important; }
-        }
-
+        /* Animadjon for overlay */
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px) translateX(-50%); }
-            to { opacity: 1; transform: translateY(0) translateX(-50%); }
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
         }
+        .animate-pop { animation: fadeIn 0.15s ease-out forwards; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
+        // SJEKK AT CONFIG ER LASTET INN
+        if (!window.MEETMAX_CONFIG) {
+            document.getElementById('root').innerHTML = `
+                <div class="h-screen flex items-center justify-center text-red-600 flex-col gap-4 p-4 text-center">
+                    <h1 class="text-2xl font-bold">Oppsettsfeil</h1>
+                    <p>Finner ikke filen <code>src/config.js</code>.</p>
+                    <p>Sørg for at du har opprettet mappen <code>src</code> og lagt <code>config.js</code> inni der.</p>
+                </div>
+            `;
+            throw new Error("Config file missing! Aborting app start.");
+        }
+
+        // HENT VARIABLER FRA CONFIG.JS
+        const JSONBIN_API_KEY = window.MEETMAX_CONFIG.API_KEY;
+        const JSONBIN_BIN_ID = window.MEETMAX_CONFIG.BIN_ID;
+        const CAMPAIGN_CONFIG = window.MEETMAX_CONFIG.CAMPAIGN;
+        const HOLIDAYS = window.HOLIDAYS;
+        const COMMERCIAL_DAYS = window.COMMERCIAL_DAYS;
+        const TASK_TYPES = window.TASK_TYPES;
+
         const { useState, useEffect, useRef } = React;
 
+        // --- IKON WRAPPER ---
         const Icon = ({ name, size, color, className }) => {
             const ref = useRef(null);
             useEffect(() => {
@@ -62,36 +75,10 @@
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}></span>;
         };
 
-        const JSONBIN_API_KEY = '$2a$10$POD7waxX5380sIzCicwFUejlDXC5wrch8IRkc409YItsJWSTnvpxO';
-        const JSONBIN_BIN_ID = '68d6a28943b1c97be951089f';
-
-        const HOLIDAYS = {
-            '2026-01-01': '1. Nyttårsdag', '2026-03-29': 'Palmesøndag', '2026-04-02': 'Skjærtorsdag', '2026-04-03': 'Langfredag', '2026-04-05': '1. Påskedag', '2026-04-06': '2. Påskedag',
-            '2026-05-01': 'Offentlig høytidsdag', '2026-05-14': 'Kristi Himmelfart', '2026-05-17': 'Grunnlovsdag', '2026-05-24': '1. Pinsedag', '2026-05-25': '2. Pinsedag',
-            '2026-12-25': '1. Juledag', '2026-12-26': '2. Juledag',
-            '2027-01-01': '1. Nyttårsdag', '2027-03-21': 'Palmesøndag', '2027-03-25': 'Skjærtorsdag', '2027-03-26': 'Langfredag', '2027-03-28': '1. Påskedag', '2027-03-29': '2. Påskedag',
-            '2027-05-01': 'Offentlig høytidsdag', '2027-05-06': 'Kristi Himmelfart', '2027-05-16': '1. Pinsedag', '2027-05-17': '17. mai / 2. Pinsedag', '2027-12-25': '1. Juledag', '2027-12-26': '2. Juledag'
-        };
-
-        const COMMERCIAL_DAYS = {
-            '2026-02-08': 'Morsdag', '2026-02-14': 'Valentines Day', '2026-02-15': 'Fastelavn', '2026-02-16': 'Vinterferie (Uke 8)', '2026-02-23': 'Vinterferie (Uke 9)',
-            '2026-10-31': 'Halloween', '2026-11-27': 'Black Friday', '2026-11-30': 'Cyber Monday'
-        };
-
-        const TASK_TYPES = {
-            'FB_ORG': { label: 'FB Organisk', icon: 'facebook', color: 'text-blue-600', bg: 'bg-blue-100', defaultTime: '10:00' },
-            'FB_BOOST': { label: 'FB Boost (Ads)', icon: 'megaphone', color: 'text-green-600', bg: 'bg-green-100', defaultTime: '12:00' },
-            'IG_POST': { label: 'Instagram', icon: 'instagram', color: 'text-pink-600', bg: 'bg-pink-100', defaultTime: '18:00' },
-            'DM': { label: 'Nyhetsbrev', icon: 'mail', color: 'text-amber-600', bg: 'bg-amber-100', defaultTime: '14:00' },
-            'MEETING': { label: 'Møte', icon: 'briefcase', color: 'text-teal-600', bg: 'bg-teal-100', defaultTime: '10:00' },
-            'ADMIN': { label: 'Admin', icon: 'lock', color: 'text-slate-600', bg: 'bg-slate-100', defaultTime: '09:00' },
-            'OTHER': { label: 'Annet', icon: 'info', color: 'text-violet-600', bg: 'bg-violet-100', defaultTime: '12:00' }
-        };
-
-        const CAMPAIGN_CONFIG = { dailyBudget: 500, totalBudget: 15000, BudgetTargetCPA: 50, RunningTargetCPA: 30 };
         const formatCurrency = (num) => (num || 0).toLocaleString('nb-NO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' kr';
         const formatAdGroupName = (name) => (name || '').replace('Ad Group', 'AG').replace('(', '- ').replace(')', '').trim();
 
+        // --- BILDE HJELPER ---
         const formatImageUrl = (url) => {
             if (!url) return '';
             let idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
@@ -101,6 +88,7 @@
             return url;
         };
 
+        // --- BACKUP & EXPORT ---
         const downloadBackup = (data) => {
             const json = JSON.stringify(data, null, 2);
             const blob = new Blob([json], { type: 'application/json' });
@@ -198,7 +186,7 @@
             });
         };
 
-        // --- DASHBOARD CHARTS ---
+        // --- GRAFER ---
         const SimpleLineChart = ({ data, color }) => {
             if (!data || data.length === 0) return null;
             const max = Math.max(...data) || 1;
@@ -298,8 +286,9 @@
             const [globalImage, setGlobalImage] = useState(''); 
             
             const [visibleTypes, setVisibleTypes] = useState(Object.keys(TASK_TYPES));
-            const [previewImage, setPreviewImage] = useState(null); // MOBIL PREVIEW MODAL
-            
+            const [previewImage, setPreviewImage] = useState(null); 
+            const [isPreviewLocked, setIsPreviewLocked] = useState(false); // FIX: Lås-state for mobil
+
             const fileInputRef = useRef(null);
             const backupInputRef = useRef(null);
 
@@ -427,7 +416,12 @@
                 if (selectedCampaign && editTitle && editDate) {
                     const updatedCampaigns = campaigns.map(c => {
                         if (c.id === selectedCampaign.id) {
-                            return { ...c, title: editTitle, date: editDate, tasks: editTasks };
+                            return { 
+                                ...c, 
+                                title: editTitle, 
+                                date: editDate, 
+                                tasks: editTasks
+                            };
                         }
                         return c;
                     });
@@ -464,14 +458,31 @@
             const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
             const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
             
+            // --- FIX: SIKRER DATO-SJEKK ---
             const calculateProgress = () => {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+
                 const currentMonthCampaigns = campaigns.filter(c => {
-                    const cDate = new Date(c.date);
-                    if (isNaN(cDate.getTime())) return false;
-                    return cDate.getMonth() === currentDate.getMonth() && cDate.getFullYear() === currentDate.getFullYear();
+                    if (!c.date) return false;
+                    const parts = c.date.split('-');
+                    if (parts.length !== 3) return false;
+                    // c.date er "YYYY-MM-DD"
+                    const cYear = parseInt(parts[0], 10);
+                    const cMonth = parseInt(parts[1], 10) - 1; // JS months 0-11
+                    return cYear === year && cMonth === month;
                 });
-                const totalTasks = currentMonthCampaigns.reduce((acc, c) => acc + (c.tasks || []).length, 0);
-                const completedTasks = currentMonthCampaigns.reduce((acc, c) => acc + (c.tasks || []).filter(t => t.completed).length, 0);
+                
+                let totalTasks = 0;
+                let completedTasks = 0;
+
+                currentMonthCampaigns.forEach(c => {
+                      // Ta hensyn til filteret!
+                      const visibleTasks = (c.tasks || []).filter(t => visibleTypes.includes(t.type || 'ADMIN'));
+                      totalTasks += visibleTasks.length;
+                      completedTasks += visibleTasks.filter(t => t.completed).length;
+                });
+
                 return totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
             };
             const progress = calculateProgress();
@@ -563,22 +574,22 @@
                                                                 <Icon name={conf.icon} size={12} color={conf.color.split(' ')[0]} />
                                                                 <span className="truncate flex-1">{t.time}</span>
                                                                 
-                                                                {/* BILDE-IKON - NÅ MED BÅDE HOVER (DESKTOP) OG KLIKK (MOBIL) */}
+                                                                {/* BILDE-IKON - KUN IKONET HER, BILDET VISES I GLOBAL OVERLAY */}
                                                                 {formattedImgUrl && (
                                                                     <div 
-                                                                        className="relative has-image" 
+                                                                        className="relative p-[5px] -m-[5px] z-10"
+                                                                        onMouseEnter={() => !window.matchMedia("(pointer: coarse)").matches && setPreviewImage(formattedImgUrl)}
+                                                                        onMouseLeave={() => !window.matchMedia("(pointer: coarse)").matches && !isPreviewLocked && setPreviewImage(null)}
                                                                         onClick={(e) => { 
                                                                             e.stopPropagation(); 
-                                                                            // Sjekk om det er mobil (touch)
+                                                                            // MOBIL: Klikk for å åpne
                                                                             if (window.matchMedia("(pointer: coarse)").matches) {
                                                                                 setPreviewImage(formattedImgUrl);
+                                                                                setIsPreviewLocked(true); 
                                                                             }
                                                                         }}
                                                                     >
                                                                         <Icon name="camera" size={12} color="text-slate-400" />
-                                                                        <div className="image-popover absolute z-50 bottom-full left-1/2 -translate-x-1/2 bg-white p-1 rounded shadow-lg border w-48 hidden group-hover:block pointer-events-none">
-                                                                            <img src={formattedImgUrl} alt="Preview" className="w-full h-auto rounded" />
-                                                                        </div>
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -599,12 +610,15 @@
 
             return (
                 <div className="max-w-7xl mx-auto p-4 bg-slate-50 min-h-screen">
-                    {/* GLOBAL PREVIEW FOR MOBIL */}
+                    {/* GLOBAL PREVIEW - VISES ALLTID OVER ALT ANNET */}
                     {previewImage && (
-                        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-[fade-in_0.2s] cursor-pointer" onClick={() => setPreviewImage(null)}>
-                            <div className="relative max-w-4xl max-h-[90vh]">
-                                <img src={previewImage} alt="Preview" className="w-full h-full object-contain rounded-lg shadow-2xl" />
-                                <p className="text-white text-center mt-2 text-sm">Trykk hvor som helst for å lukke</p>
+                        <div 
+                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm cursor-pointer animate-pop" 
+                            onClick={() => { setPreviewImage(null); setIsPreviewLocked(false); }}
+                        >
+                            <div className="relative max-w-[90vw] max-h-[90vh]">
+                                <img src={previewImage} alt="Preview" className="w-full h-full object-contain rounded shadow-2xl" />
+                                {isPreviewLocked && <p className="text-white text-center mt-4 text-sm font-medium">Trykk hvor som helst for å lukke</p>}
                             </div>
                         </div>
                     )}
@@ -636,7 +650,7 @@
                         <div className="mb-4 md:mb-0">
                             <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-3"><span className="bg-indigo-600 text-white p-2 rounded-lg"><Icon name="calendar" size={24}/></span> MeetMax Manager</h1>
                             <div className="flex items-center gap-3 mt-1 ml-1">
-                                <p className="text-slate-500 text-sm">Oversikt for <span className="font-semibold text-indigo-600">Max's Utvalgte</span></p>
+                                <p className="text-slate-500 text-sm">Oversikt for <span className="font-semibold text-indigo-600">Me & Max</span></p>
                                 {saving ? <span className="text-xs text-orange-500 flex items-center gap-1"><Icon name="loader-2" size={10} className="animate-spin"/> Lagrer...</span> : <span className="text-xs text-green-600 flex items-center gap-1"><Icon name="cloud" size={10} /> Koblet til skyen</span>}
                                 {!isDataLoaded && <span className="text-xs text-red-500 flex items-center gap-1"><Icon name="alert-triangle" size={10} /> OFFLINE</span>}
                             </div>
@@ -726,7 +740,7 @@
                     ) : <KpiDashboard />}
 
                     <footer className="mt-12 py-6 border-t border-slate-200 text-center text-xs text-slate-400">
-                        &copy; 2026 Me & Max AS - Versjon 27.0 (Image Fix)
+                        &copy; 2026 Me & Max AS - Versjon 2.2 (Global Fix)
                     </footer>
                 </div>
             );
