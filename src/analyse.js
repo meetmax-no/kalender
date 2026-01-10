@@ -3,23 +3,56 @@ window.parseMetaCSV = (csvText) => {
     const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
     if (lines.length < 2) return [];
 
+    // Fjerner anførselstegn fra overskriftene og trimmer mellomrom
     const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
     
-    // Mapping fra Meta CSV overskrifter til våre feltnavn
+    // Mapping fra Meta CSV overskrifter (DIN FIL) til våre feltnavn
     const fieldMap = {
-        'Rapportering starter': 'date', 'Reporting Starts': 'date',
+        // Dato
+        'Rapportering starter': 'date', 
+        'Reporting Starts': 'date',
+        'Reporting starts': 'date', // Lagt til (din fil)
+
+        // Reach & Impressions
         'Reach': 'reach', 'Rekkevidde': 'reach',
         'Impressions': 'impressions', 'Eksponeringer': 'impressions',
+
+        // Penger
         'Amount spent (NOK)': 'spend', 'Beløp brukt (NOK)': 'spend',
+        
+        // Frekvens
         'Frequency': 'frequency', 'Frekvens': 'frequency',
-        'CPM (Cost per 1,000 Impressions) (NOK)': 'cpm', 'CPM (kostnad per 1000 eksponeringer) (NOK)': 'cpm',
+
+        // CPM
+        'CPM (Cost per 1,000 Impressions) (NOK)': 'cpm', 
+        'CPM (kostnad per 1000 eksponeringer) (NOK)': 'cpm',
+        'CPM (cost per 1,000 impressions) (NOK)': 'cpm', // Lagt til (din fil)
+
+        // Link Clicks
         'Link clicks': 'linkClicks', 'Klikk på lenke': 'linkClicks',
-        'CPC (Cost per Link Click) (NOK)': 'cpcLink', 'CPC (kostnad per klikk på lenke) (NOK)': 'cpcLink',
-        'Clicks (All)': 'clicksAll', 'Klikk (alle)': 'clicksAll',
-        'CTR (All)': 'ctrAll', 'CTR (alle)': 'ctrAll',
-        'CPC (All) (NOK)': 'cpcAll', 'CPC (alle) (NOK)': 'cpcAll',
+        
+        // CPC Link
+        'CPC (Cost per Link Click) (NOK)': 'cpcLink', 
+        'CPC (kostnad per klikk på lenke) (NOK)': 'cpcLink',
+        'CPC (cost per link click) (NOK)': 'cpcLink', // Lagt til (din fil)
+
+        // Clicks All
+        'Clicks (all)': 'clicksAll', 'Klikk (alle)': 'clicksAll',
+        
+        // CTR All
+        'CTR (all)': 'ctrAll', 'CTR (alle)': 'ctrAll',
+        
+        // CPC All
+        'CPC (All) (NOK)': 'cpcAll', 
+        'CPC (alle) (NOK)': 'cpcAll',
+        'CPC (all) (NOK)': 'cpcAll', // Lagt til (din fil)
+
+        // Landing Page
         'Landing page views': 'landingPageViews', 'Visninger av landingsside': 'landingPageViews',
-        'Cost per landing page view (NOK)': 'costPerLandingPageView', 'Kostnad per visning av landingsside (NOK)': 'costPerLandingPageView'
+        
+        // Cost per Landing
+        'Cost per landing page view (NOK)': 'costPerLandingPageView', 
+        'Kostnad per visning av landingsside (NOK)': 'costPerLandingPageView'
     };
 
     const result = [];
@@ -44,11 +77,22 @@ window.parseMetaCSV = (csvText) => {
             const key = fieldMap[header];
             if (key) {
                 let value = row[index] ? row[index].replace(/"/g, '').trim() : '';
+                
                 if (key === 'date') {
-                    obj[key] = value; // Behold dato som streng
+                    // Datoformat i din fil er YYYY-MM-DD, vi beholder det som det er
+                    obj[key] = value; 
                 } else {
-                    // Konverter tall (erstatt komma med punktum hvis norsk Excel)
-                    value = value.replace(',', '.');
+                    // Din fil bruker punktum (.) som desimaltegn (f.eks 305.21)
+                    // Norske filer bruker ofte komma (,). 
+                    // Vi må håndtere begge deler trygt.
+                    
+                    if (value.includes('.') && !value.includes(',')) {
+                        // Allerede formatert som datamaskin-tall (305.21) -> Gjør ingenting
+                    } else if (value.includes(',')) {
+                        // Norsk format (305,21) -> Bytt komma med punktum
+                        value = value.replace(',', '.');
+                    }
+                    
                     obj[key] = parseFloat(value) || 0;
                 }
                 hasData = true;
@@ -62,7 +106,7 @@ window.parseMetaCSV = (csvText) => {
     return result;
 };
 
-// --- HOVEDKOMPONENT (Din kode, omdøpt til AnalyseDashboard) ---
+// --- HOVEDKOMPONENT (AnalyseDashboard) ---
 window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const Icon = window.Icon;
     const { useState, useRef } = React;
