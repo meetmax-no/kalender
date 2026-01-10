@@ -9,31 +9,19 @@ const formatDateShort = (dateStr) => {
 };
 
 // --- KONFIGURASJON FOR GRAFER ---
-// Vi bruker et bredt koordinatsystem (300x150) for å matche boksene bedre
 const G = {
-    w: 300, // Total bredde
-    h: 150, // Total høyde
-    
-    // ENDRET: Økt padding (marg) fra 35 til 40 for å gi mer plass til Y-aksen
-    padL: 40, // Venstre marg (for Y-akse)
-    padR: 40, // Høyre marg (for Y-akse)
-    
-    padT: 20, // Topp marg
-    padB: 20, // Bunn marg
-    
-    // Hjelpefunksjoner for å plassere ting
-    // Må oppdatere disse siden padding er endret (300 - 40 - 40 = 220)
-    graphW: () => 300 - 40 - 40, 
-    graphH: () => 150 - 20 - 20, // 110
-    
-    // Konverter data til Y-koordinat
+    w: 300, 
+    h: 150, 
+    padL: 35, 
+    padR: 35, 
+    padT: 20, 
+    padB: 20, 
+    graphW: () => 300 - 35 - 35, 
+    graphH: () => 150 - 20 - 20, 
     y: (val, max) => 20 + (110 - (val / (max || 1)) * 110),
-    
-    // Konverter index til X-koordinat
     x: (i, count) => {
-        if (count <= 1) return 150; // Senter
-        // Bruker graphW() som nå er 220
-        return 40 + (i / (count - 1)) * (300 - 40 - 40);
+        if (count <= 1) return 150; 
+        return 35 + (i / (count - 1)) * 230;
     }
 };
 
@@ -41,19 +29,15 @@ const G = {
 
 const GridLines = () => (
     <g stroke="#f1f5f9" strokeWidth="1">
-        {/* Topp */}
         <line x1={G.padL} y1={G.padT} x2={G.w - G.padR} y2={G.padT} />
-        {/* Midt */}
         <line x1={G.padL} y1={G.padT + G.graphH()/2} x2={G.w - G.padR} y2={G.padT + G.graphH()/2} strokeDasharray="4" />
-        {/* Bunn */}
         <line x1={G.padL} y1={G.h - G.padB} x2={G.w - G.padR} y2={G.h - G.padB} />
     </g>
 );
 
 const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left' }) => {
     const mid = max / 2;
-    // ENDRET: Justert xPos for å flytte teksten 5px lenger ut (fra -5 til -10)
-    const xPos = align === 'left' ? G.padL - 10 : G.w - G.padR + 10;
+    const xPos = align === 'left' ? G.padL - 5 : G.w - G.padR + 5;
     const anchor = align === 'left' ? 'end' : 'start';
     return (
         <g fill={color} textAnchor={anchor} fontSize="8" fontWeight="500" style={{ fontFamily: 'sans-serif' }}>
@@ -87,9 +71,7 @@ const CostEffectChart = ({ data }) => {
     const count = sorted.length;
     const [hover, setHover] = React.useState(null);
 
-    // Bars width logic
     const barWidth = count === 1 ? 40 : (G.graphW() / count) * 0.6;
-
     const points = sorted.map((d, i) => `${G.x(i, count)},${G.y(d.linkClicks, maxClicks)}`).join(' ');
 
     return (
@@ -100,10 +82,9 @@ const CostEffectChart = ({ data }) => {
                 <YAxis max={maxClicks} unit="" color="#6366f1" align="right" />
                 <XAxis data={sorted} />
 
-                {/* Bars */}
                 {sorted.map((d, i) => {
                     const barH = (d.spend / maxSpend) * G.graphH();
-                    const x = count === 1 ? 150 : G.x(i, count); // Senterpunkt
+                    const x = count === 1 ? 150 : G.x(i, count);
                     return (
                         <rect key={i} x={x - barWidth/2} y={G.h - G.padB - barH} width={barWidth} height={barH} 
                               fill={hover === i ? "#a5b4fc" : "#e0e7ff"} rx="1" 
@@ -111,26 +92,22 @@ const CostEffectChart = ({ data }) => {
                     );
                 })}
 
-                {/* Line */}
                 {count > 1 ? (
                     <polyline fill="none" stroke="#6366f1" strokeWidth="1.5" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
                 ) : (
                     <line x1="130" y1={G.y(sorted[0].linkClicks, maxClicks)} x2="170" y2={G.y(sorted[0].linkClicks, maxClicks)} stroke="#6366f1" strokeWidth="1.5" />
                 )}
 
-                {/* Dots */}
                 {sorted.map((d, i) => (
                     <circle key={i} cx={G.x(i, count)} cy={G.y(d.linkClicks, maxClicks)} r={hover===i?3:1.5} fill="white" stroke="#6366f1" strokeWidth="1.5" className="transition-all" />
                 ))}
 
-                {/* Hover Zones */}
                 {sorted.map((d, i) => {
                     const zoneW = G.graphW() / count;
                     return <rect key={i} x={G.x(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
                 })}
             </svg>
 
-            {/* Tooltip */}
             {hover !== null && sorted[hover] && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-2 rounded-lg shadow-xl text-xs pointer-events-none z-20 whitespace-nowrap mt-2">
                     <div className="font-bold text-slate-300 border-b border-slate-700 mb-1 pb-1 text-[10px] uppercase">{sorted[hover].date}</div>
@@ -471,20 +448,30 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
 
             {/* 2. SCORECARDS */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* 1. Totalt Forbruk */}
                 <ScoreCard title="Totalt Forbruk" value={totals.spend} previousValue={prevTotals.spend} isCurrency={true} isReverse={true} />
-                <ScoreCard title="Link Clicks" value={totals.clicks} previousValue={prevTotals.clicks} />
-                <ScoreCard title="Snitt CPC (Link)" value={totals.cpc} previousValue={prevTotals.cpc} isCurrency={true} isReverse={true} />
-                <ScoreCard title="CTR (Click-Through)" value={totals.ctr} previousValue={prevTotals.ctr} unit="%" />
                 
-                {/* NYE KORT */}
-                <ScoreCard title="Impressions" value={totals.impressions} previousValue={prevTotals.impressions} />
+                {/* 2. Reach */}
                 <ScoreCard title="Reach" value={totals.reach} previousValue={prevTotals.reach} />
-                <ScoreCard title="Frequency" value={totals.frequency} previousValue={prevTotals.frequency} unit="" decimals={2} /> 
+                
+                {/* 3. Impressions */}
+                <ScoreCard title="Impressions" value={totals.impressions} previousValue={prevTotals.impressions} />
+                
+                {/* 4. Frequency (Reverse logic: Down is Green) */}
+                <ScoreCard title="Frequency" value={totals.frequency} previousValue={prevTotals.frequency} unit="" decimals={2} isReverse={true} /> 
+                
+                {/* 5. Link Clicks */}
+                <ScoreCard title="Link Clicks" value={totals.clicks} previousValue={prevTotals.clicks} />
+                
+                {/* 6. CTR */}
+                <ScoreCard title="CTR (Click-Through)" value={totals.ctr} previousValue={prevTotals.ctr} unit="%" decimals={2} />
+                
+                {/* 7. Snitt CPC */}
+                <ScoreCard title="Snitt CPC (Link)" value={totals.cpc} previousValue={prevTotals.cpc} isCurrency={true} isReverse={true} />
             </div>
 
             {/* 3. GRAFER */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* ENDRET: Lagt til lg:col-span-2 her for å gjøre den bred */}
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm col-span-1 lg:col-span-2">
                     <h3 className="text-sm font-bold text-slate-700 mb-6 flex justify-between">
                         <span>💰 Kostnad vs Effekt (ROI)</span>
