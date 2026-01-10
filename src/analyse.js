@@ -1,65 +1,51 @@
-// --- HJELPEFUNKSJON FOR CSV PARSING ---
+// --- ROBUST HJELPEFUNKSJON FOR CSV PARSING ---
 window.parseMetaCSV = (csvText) => {
     const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
     if (lines.length < 2) return [];
 
-    // Fjerner anførselstegn fra overskriftene og trimmer mellomrom
-    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+    // 1. Vasker overskriftene: Fjerner alt som ikke er bokstaver eller tall for å unngå feil med mellomrom/tegn
+    const normalize = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // Henter rå overskrifter
+    const rawHeaders = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
     
-    // Mapping fra Meta CSV overskrifter (DIN FIL) til våre feltnavn
-    const fieldMap = {
-        // Dato
-        'Rapportering starter': 'date', 
-        'Reporting Starts': 'date',
-        'Reporting starts': 'date', // Lagt til (din fil)
-
-        // Reach & Impressions
-        'Reach': 'reach', 'Rekkevidde': 'reach',
-        'Impressions': 'impressions', 'Eksponeringer': 'impressions',
-
-        // Penger
-        'Amount spent (NOK)': 'spend', 'Beløp brukt (NOK)': 'spend',
-        
-        // Frekvens
-        'Frequency': 'frequency', 'Frekvens': 'frequency',
-
-        // CPM
-        'CPM (Cost per 1,000 Impressions) (NOK)': 'cpm', 
-        'CPM (kostnad per 1000 eksponeringer) (NOK)': 'cpm',
-        'CPM (cost per 1,000 impressions) (NOK)': 'cpm', // Lagt til (din fil)
-
-        // Link Clicks
-        'Link clicks': 'linkClicks', 'Klikk på lenke': 'linkClicks',
-        
-        // CPC Link
-        'CPC (Cost per Link Click) (NOK)': 'cpcLink', 
-        'CPC (kostnad per klikk på lenke) (NOK)': 'cpcLink',
-        'CPC (cost per link click) (NOK)': 'cpcLink', // Lagt til (din fil)
-
-        // Clicks All
-        'Clicks (all)': 'clicksAll', 'Klikk (alle)': 'clicksAll',
-        
-        // CTR All
-        'CTR (all)': 'ctrAll', 'CTR (alle)': 'ctrAll',
-        
-        // CPC All
-        'CPC (All) (NOK)': 'cpcAll', 
-        'CPC (alle) (NOK)': 'cpcAll',
-        'CPC (all) (NOK)': 'cpcAll', // Lagt til (din fil)
-
-        // Landing Page
-        'Landing page views': 'landingPageViews', 'Visninger av landingsside': 'landingPageViews',
-        
-        // Cost per Landing
-        'Cost per landing page view (NOK)': 'costPerLandingPageView', 
-        'Kostnad per visning av landingsside (NOK)': 'costPerLandingPageView'
+    // 2. Definerer "fasiten" basert på vasket tekst
+    // Her matcher vi f.eks både "Amount spent (NOK)" og "Beløp brukt (NOK)" uavhengig av tegnsetting
+    const mapping = {
+        'date': ['reportingstarts', 'rapporteringstarter'],
+        'reach': ['reach', 'rekkevidde'],
+        'impressions': ['impressions', 'eksponeringer'],
+        'spend': ['amountspentnok', 'beløpbruktnok'],
+        'frequency': ['frequency', 'frekvens'],
+        'cpm': ['cpmcostper1000impressionsnok', 'cpmkostnadper1000eksponeringernok'],
+        'linkClicks': ['linkclicks', 'klikkpålenke'],
+        'cpcLink': ['cpccostperlinkclicknok', 'cpckostnadperklikkpålenkenok'],
+        'clicksAll': ['clicksall', 'klikkalle'],
+        'ctrAll': ['ctrall', 'ctralle'],
+        'cpcAll': ['cpcallnok', 'cpcallenok'],
+        'landingPageViews': ['landingpageviews', 'visningeravlandingsside'],
+        'costPerLandingPageView': ['costperlandingpageviewnok', 'kostnadpervisningavlandingssidenok']
     };
+
+    // 3. Bygger indeks-kart (hvilken kolonne er hva?)
+    const columnMap = {};
+    rawHeaders.forEach((rawHeader, index) => {
+        const cleanHeader = normalize(rawHeader);
+        // Sjekk om denne overskriften matcher noe i fasiten vår
+        Object.keys(mapping).forEach(fieldKey => {
+            if (mapping[fieldKey].includes(cleanHeader)) {
+                columnMap[fieldKey] = index;
+            }
+        });
+    });
 
     const result = [];
     
+    // 4. Leser dataene
     for (let i = 1; i < lines.length; i++) {
-        // Enkel CSV split som håndterer komma inni anførselstegn
         const currentLine = lines[i];
+        
+        // Smart split som håndterer komma inne i anførselstegn (f.eks "7-day click, 1-day view")
         const row = [];
         let inQuotes = false;
         let val = '';
@@ -68,31 +54,25 @@ window.parseMetaCSV = (csvText) => {
             else if (char === ',' && !inQuotes) { row.push(val); val = ''; }
             else { val += char; }
         }
-        row.push(val); // Siste verdi
+        row.push(val); 
 
-        const obj = { id: Date.now() + Math.random() }; // Unik ID
+        // Bygg objektet
+        const obj = { id: Date.now() + Math.random() };
         let hasData = false;
 
-        headers.forEach((header, index) => {
-            const key = fieldMap[header];
-            if (key) {
-                let value = row[index] ? row[index].replace(/"/g, '').trim() : '';
-                
+        // Fyll inn data basert på kartet vårt
+        Object.keys(columnMap).forEach(key => {
+            const index = columnMap[key];
+            let value = row[index] ? row[index].replace(/"/g, '').trim() : '';
+
+            if (value) {
                 if (key === 'date') {
-                    // Datoformat i din fil er YYYY-MM-DD, vi beholder det som det er
-                    obj[key] = value; 
+                    obj[key] = value;
                 } else {
-                    // Din fil bruker punktum (.) som desimaltegn (f.eks 305.21)
-                    // Norske filer bruker ofte komma (,). 
-                    // Vi må håndtere begge deler trygt.
-                    
-                    if (value.includes('.') && !value.includes(',')) {
-                        // Allerede formatert som datamaskin-tall (305.21) -> Gjør ingenting
-                    } else if (value.includes(',')) {
-                        // Norsk format (305,21) -> Bytt komma med punktum
+                    // Håndter tallformater (både 305.21 og 305,21)
+                    if (value.includes(',') && !value.includes('.')) {
                         value = value.replace(',', '.');
                     }
-                    
                     obj[key] = parseFloat(value) || 0;
                 }
                 hasData = true;
