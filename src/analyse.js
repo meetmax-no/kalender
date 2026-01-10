@@ -1,18 +1,19 @@
-// --- ROBUST HJELPEFUNKSJON FOR CSV PARSING ---
+// --- HJELPERE FOR FORMATERING ---
+const formatCurrency = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') + ' kr' : '-';
+const formatNumber = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') : '-';
+const formatDec = (val) => val !== undefined && val !== null ? val.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+const formatPercent = (val) => val !== undefined && val !== null ? val.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%' : '-';
+
+// --- CSV PARSER (UENDRET) ---
 window.parseMetaCSV = (csvText) => {
-    // Regex som splitter på komma KUN hvis det ikke er inni anførselstegn
     const splitCSV = (str) => {
         const matches = str.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
         return matches ? matches.map(m => m.replace(/^"|"$/g, '').trim()) : [];
     };
-
     const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
     if (lines.length < 2) return [];
-
-    // Bruker den smarte splitteren på overskriftene
     const headers = splitCSV(lines[0]);
     
-    // Mapping basert NØYAKTIG på din fil
     const fieldMap = {
         'Reporting starts': 'date', 'Rapportering starter': 'date',
         'Amount spent (NOK)': 'spend', 'Beløp brukt (NOK)': 'spend',
@@ -26,7 +27,8 @@ window.parseMetaCSV = (csvText) => {
         'CTR (all)': 'ctrAll', 'CTR (alle)': 'ctrAll',
         'CPC (all) (NOK)': 'cpcAll', 'CPC (alle) (NOK)': 'cpcAll',
         'Landing page views': 'landingPageViews', 'Visninger av landingsside': 'landingPageViews',
-        'Cost per landing page view (NOK)': 'costPerLandingPageView', 'Kostnad per visning av landingsside (NOK)': 'costPerLandingPageView'
+        'Cost per landing page view (NOK)': 'costPerLandingPageView', 'Kostnad per visning av landingsside (NOK)': 'costPerLandingPageView',
+        'CTR (link click-through rate)': 'ctrLink', 'CTR (klikkrate for lenke)': 'ctrLink' // La til denne for Scorecard
     };
 
     const result = [];
@@ -43,203 +45,490 @@ window.parseMetaCSV = (csvText) => {
             else { buffer += char; }
         }
         row.push(buffer);
-
         const obj = { id: Date.now() + Math.random() };
         let hasData = false;
-
         Object.keys(indices).forEach(key => {
             const index = indices[key];
             let val = row[index] ? row[index].replace(/^"|"$/g, '').trim() : '';
-
             if (val) {
-                if (key === 'date') {
-                    obj[key] = val;
-                } else {
+                if (key === 'date') obj[key] = val;
+                else {
                     if (val.includes(',') && !val.includes('.')) val = val.replace(',', '.');
                     obj[key] = parseFloat(val) || 0;
                 }
                 hasData = true;
             }
         });
-
+        // Beregn CTR Link manuelt hvis den mangler men vi har klikk og impressions
         if (hasData && obj.date) {
+            if (obj.ctrLink === undefined && obj.linkClicks && obj.impressions) {
+                obj.ctrLink = (obj.linkClicks / obj.impressions) * 100;
+            }
             result.push(obj);
         }
     }
     return result;
 };
 
+// --- GRAFKOMPONENTER (SVG) ---
+
+const Tooltip = ({ x, y, children }) => (
+    <div className="absolute bg-slate-800 text-white text-[10px] p-2 rounded shadow-lg pointer-events-none z-10 whitespace-pre" 
+         style={{ left: x, top: y, transform: 'translate(-50%, -120%)' }}>
+        {children}
+    </div>
+);
+
+// Graf 1: ROI (Spend vs Clicks)
+const CostEffectChart = ({ data }) => {
+    if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
+    const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const maxSpend = Math.max(...sorted.map(d => d.spend)) || 1;
+    const maxClicks = Math.max(...sorted.map(d => d.linkClicks)) || 1;
+    const [hover, setHover] = React.useState(null);
+
+    const points = sorted.map((d, i) => {
+        const x = (i / (sorted.length - 1 || 1)) * 100;
+        const y = 100 - ((d.linkClicks / maxClicks) * 100);
+        return `${x},${y}`;
+    }).join(' ');
+
+    return (
+        <div className="relative h-48 w-full group" onMouseLeave={() => setHover(null)}>
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+                {sorted.map((d, i) => {
+                    const height = (d.spend / maxSpend) * 100;
+                    const width = (100 / sorted.length) * 0.8;
+                    const x = (i / sorted.length) * 100 + (100 / sorted.length * 0.1);
+                    return (
+                        <rect key={i} x={x} y={100 - height} width={width} height={height} fill={hover === i ? "#c7d2fe" : "#e0e7ff"} rx="1" 
+                              onMouseEnter={() => setHover(i)} />
+                    );
+                })}
+                <polyline fill="none" stroke="#6366f1" strokeWidth="2" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+            </svg>
+            {hover !== null && sorted[hover] && (
+                <div className="absolute top-0 right-0 bg-white/90 p-2 border border-indigo-100 rounded shadow-sm text-xs pointer-events-none">
+                    <div className="font-bold text-slate-700">{sorted[hover].date}</div>
+                    <div className="text-indigo-600">Spend: {formatCurrency(sorted[hover].spend)}</div>
+                    <div className="text-indigo-600">Clicks: {formatNumber(sorted[hover].linkClicks)}</div>
+                </div>
+            )}
+             <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
+                <span className="text-indigo-500 flex items-center gap-1"><span className="w-2 h-0.5 bg-indigo-500"></span> Link Clicks</span>
+                <span className="text-indigo-300 flex items-center gap-1"><span className="w-2 h-2 bg-indigo-100 border border-indigo-200"></span> Spend</span>
+            </div>
+        </div>
+    );
+};
+
+// Graf 2: Pris (CPC vs CPM)
+const PriceTrendChart = ({ data }) => {
+    if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
+    const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const processed = sorted.map(d => ({
+        ...d,
+        cpc: d.cpcLink || (d.linkClicks > 0 ? d.spend / d.linkClicks : 0),
+        cpm: d.cpm || (d.impressions > 0 ? (d.spend / d.impressions) * 1000 : 0)
+    }));
+    const maxCpc = Math.max(...processed.map(d => d.cpc)) || 1;
+    const maxCpm = Math.max(...processed.map(d => d.cpm)) || 1;
+    const [hover, setHover] = React.useState(null);
+
+    const pointsCpc = processed.map((d, i) => `${(i / (processed.length - 1 || 1)) * 100},${100 - ((d.cpc / maxCpc) * 100)}`).join(' ');
+    const pointsCpm = processed.map((d, i) => `${(i / (processed.length - 1 || 1)) * 100},${100 - ((d.cpm / maxCpm) * 100)}`).join(' ');
+
+    return (
+        <div className="relative h-48 w-full" onMouseLeave={() => setHover(null)}>
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+                <polyline fill="none" stroke="#f59e0b" strokeWidth="2" points={pointsCpm} vectorEffect="non-scaling-stroke" strokeDasharray="4" className="opacity-50" />
+                <polyline fill="none" stroke="#10b981" strokeWidth="2" points={pointsCpc} vectorEffect="non-scaling-stroke" />
+                {processed.map((d, i) => (
+                    <rect key={i} x={(i / (processed.length - 1 || 1)) * 100 - 2} y="0" width="4" height="100" fill="transparent" 
+                          onMouseEnter={() => setHover(i)} />
+                ))}
+            </svg>
+            {hover !== null && processed[hover] && (
+                <div className="absolute top-0 right-0 bg-white/90 p-2 border border-emerald-100 rounded shadow-sm text-xs pointer-events-none">
+                    <div className="font-bold text-slate-700">{processed[hover].date}</div>
+                    <div className="text-emerald-600">CPC: {formatDec(processed[hover].cpc)} kr</div>
+                    <div className="text-amber-500">CPM: {formatCurrency(processed[hover].cpm)}</div>
+                </div>
+            )}
+             <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
+                <span className="text-emerald-500 flex items-center gap-1"><span className="w-2 h-0.5 bg-emerald-500"></span> CPC</span>
+                <span className="text-amber-500 flex items-center gap-1"><span className="w-2 h-0.5 bg-amber-500 border-b border-amber-500 border-dashed"></span> CPM</span>
+            </div>
+        </div>
+    );
+};
+
+// Graf 3: Metning (Impressions vs Reach)
+const SaturationChart = ({ data }) => {
+    if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
+    const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const maxVal = Math.max(...sorted.map(d => Math.max(d.impressions, d.reach))) || 1;
+    const [hover, setHover] = React.useState(null);
+
+    const buildPath = (key) => {
+        const points = sorted.map((d, i) => `${(i / (sorted.length - 1 || 1)) * 100},${100 - ((d[key] / maxVal) * 100)}`);
+        return `M0,100 ${points.map(p => 'L' + p).join(' ')} L100,100 Z`;
+    };
+
+    return (
+        <div className="relative h-48 w-full" onMouseLeave={() => setHover(null)}>
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+                <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.2)" stroke="#a855f7" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                {sorted.map((d, i) => (
+                    <rect key={i} x={(i / (sorted.length - 1 || 1)) * 100 - 2} y="0" width="4" height="100" fill="transparent" 
+                          onMouseEnter={() => setHover(i)} />
+                ))}
+            </svg>
+            {hover !== null && sorted[hover] && (
+                <div className="absolute top-0 right-0 bg-white/90 p-2 border border-blue-100 rounded shadow-sm text-xs pointer-events-none">
+                    <div className="font-bold text-slate-700">{sorted[hover].date}</div>
+                    <div className="text-blue-500">Impr: {formatNumber(sorted[hover].impressions)}</div>
+                    <div className="text-purple-500">Reach: {formatNumber(sorted[hover].reach)}</div>
+                </div>
+            )}
+            <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
+                <span className="text-blue-500 flex items-center gap-1"><span className="w-2 h-2 bg-blue-100 border border-blue-500"></span> Impr.</span>
+                <span className="text-purple-500 flex items-center gap-1"><span className="w-2 h-2 bg-purple-100 border border-purple-500"></span> Reach</span>
+            </div>
+        </div>
+    );
+};
+
+// --- SCORECARD ---
+const ScoreCard = ({ title, value, previousValue, isCurrency, isReverse, unit = '' }) => {
+    const Icon = window.Icon;
+    const diff = value - previousValue;
+    const diffPercent = previousValue > 0 ? (diff / previousValue) * 100 : 0;
+    
+    // Farge-logikk: 
+    // Normal: Økning er Grønn (f.eks Salg). 
+    // Reverse: Økning er Rød (f.eks CPC/Kostnad).
+    let color = "text-slate-400";
+    let iconName = "minus";
+
+    if (diff > 0) {
+        color = isReverse ? "text-red-500" : "text-emerald-500";
+        iconName = "trending-up";
+    } else if (diff < 0) {
+        color = isReverse ? "text-emerald-500" : "text-red-500";
+        iconName = "trending-down";
+    }
+
+    return (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-28">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">{title}</h3>
+            <div>
+                <div className="text-2xl font-extrabold text-slate-800">
+                    {isCurrency ? formatCurrency(value) : formatNumber(value) + unit}
+                </div>
+                {previousValue > 0 && (
+                    <div className={`flex items-center gap-1 text-xs font-bold mt-1 ${color}`}>
+                        <Icon name={iconName} size={12} />
+                        <span>{Math.abs(diffPercent).toFixed(1)}%</span>
+                        <span className="text-slate-400 font-normal ml-1">vs forrige</span>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // --- HOVEDKOMPONENT ---
 window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const Icon = window.Icon;
-    const { useState, useRef } = React;
+    const { useState, useRef, useEffect } = React;
     const csvInputRef = useRef(null);
 
     // --- STATE ---
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [isTableExpanded, setIsTableExpanded] = useState(false); // NY: Styrer om tabellen er utvidet
+    const [isTableExpanded, setIsTableExpanded] = useState(false);
+    
+    // FILTER STATE
+    const [filterType, setFilterType] = useState('last30'); // today, last7, last30, thisMonth, lastMonth, custom
+    const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
-    const [form, setForm] = useState({
-        date: new Date().toISOString().slice(0,10),
-        reach: '', frequency: '', spend: '', impressions: '', cpm: '',
-        linkClicks: '', cpcLink: '', clicksAll: '', ctrAll: '', cpcAll: '',
-        landingPageViews: '', costPerLandingPageView: ''
-    });
+    // SETT DATOER NÅR FILTER ENDRES
+    useEffect(() => {
+        const today = new Date();
+        let start = new Date();
+        let end = new Date();
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setForm(prev => ({ ...prev, [name]: value }));
+        // Nullstill tid for nøyaktig sammenligning
+        const stripTime = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+        if (filterType === 'today') {
+            // Start og slutt er i dag
+        } else if (filterType === 'last7') {
+            start.setDate(today.getDate() - 6);
+        } else if (filterType === 'last30') {
+            start.setDate(today.getDate() - 29);
+        } else if (filterType === 'thisMonth') {
+            start = new Date(today.getFullYear(), today.getMonth(), 1);
+        } else if (filterType === 'lastMonth') {
+            start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            end = new Date(today.getFullYear(), today.getMonth(), 0);
+        } else if (filterType === 'custom') {
+            // Behold eksisterende custom dates (satt via input)
+            return; 
+        }
+
+        setDateRange({ 
+            start: start.toISOString().split('T')[0], 
+            end: end.toISOString().split('T')[0] 
+        });
+    }, [filterType]);
+
+    // FILTRER DATA
+    const getFilteredData = (rangeStart, rangeEnd) => {
+        if (!kpiData) return [];
+        return kpiData.filter(d => d.date >= rangeStart && d.date <= rangeEnd);
     };
 
-    const handleSubmit = (e) => {
+    // BEREGN FORRIGE PERIODE (For sammenligning)
+    const getPreviousRange = () => {
+        if (!dateRange.start || !dateRange.end) return { start: '', end: '' };
+        const start = new Date(dateRange.start);
+        const end = new Date(dateRange.end);
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inkluderer startdag
+
+        const prevEnd = new Date(start);
+        prevEnd.setDate(start.getDate() - 1);
+        
+        const prevStart = new Date(prevEnd);
+        prevStart.setDate(prevEnd.getDate() - diffDays + 1);
+
+        return {
+            start: prevStart.toISOString().split('T')[0],
+            end: prevEnd.toISOString().split('T')[0]
+        };
+    };
+
+    const currentData = getFilteredData(dateRange.start, dateRange.end);
+    const prevRange = getPreviousRange();
+    const prevData = getFilteredData(prevRange.start, prevRange.end);
+
+    // AGGREGATER
+    const sum = (data, key) => data.reduce((acc, curr) => acc + (curr[key] || 0), 0);
+    const avg = (data, key) => data.length > 0 ? sum(data, key) / data.length : 0;
+    
+    // Beregn snitt CTR vektet (Totalt Klikk / Totalt Visninger)
+    const calcCtr = (data) => {
+        const clicks = sum(data, 'linkClicks');
+        const impr = sum(data, 'impressions');
+        return impr > 0 ? (clicks / impr) * 100 : 0;
+    };
+    
+    // Beregn snitt CPC vektet (Total Spend / Total Klikk)
+    const calcCpc = (data) => {
+        const spend = sum(data, 'spend');
+        const clicks = sum(data, 'linkClicks');
+        return clicks > 0 ? spend / clicks : 0;
+    };
+
+    const totals = {
+        spend: sum(currentData, 'spend'),
+        clicks: sum(currentData, 'linkClicks'),
+        cpc: calcCpc(currentData),
+        ctr: calcCtr(currentData)
+    };
+
+    const prevTotals = {
+        spend: sum(prevData, 'spend'),
+        clicks: sum(prevData, 'linkClicks'),
+        cpc: calcCpc(prevData),
+        ctr: calcCtr(prevData)
+    };
+
+    // --- STANDARD TABELL ---
+    const sortedData = [...(kpiData || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const visibleTableData = isTableExpanded ? sortedData : sortedData.slice(0, 5);
+
+    // Manuell form handling
+    const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), reach:'', frequency:'', spend:'', impressions:'', cpm:'', linkClicks:'', cpcLink:'', clicksAll:'', ctrAll:'', cpcAll:'', landingPageViews:'', costPerLandingPageView:'' });
+    const handleFormChange = (e) => setForm({...form, [e.target.name]: e.target.value});
+    const handleFormSubmit = (e) => {
         e.preventDefault();
-        if (!form.date) return;
-        const newData = { id: Date.now(), ...form };
-        Object.keys(newData).forEach(key => {
-            if (key !== 'id' && key !== 'date') newData[key] = parseFloat(newData[key]) || 0;
-        });
-        onAddKpi(newData);
-        setForm(prev => ({ ...prev, 
-            reach: '', frequency: '', spend: '', impressions: '', cpm: '',
-            linkClicks: '', cpcLink: '', clicksAll: '', ctrAll: '', cpcAll: '',
-            landingPageViews: '', costPerLandingPageView: ''
-        }));
+        const numData = { id: Date.now(), ...form };
+        Object.keys(numData).forEach(k => { if(k!=='id'&&k!=='date') numData[k]=parseFloat(numData[k])||0; });
+        onAddKpi(numData);
         setIsFormOpen(false);
     };
 
     const handleCsvUpload = (e) => {
         const file = e.target.files[0];
-        if (!file) return;
+        if(!file) return;
         const reader = new FileReader();
         reader.onload = (ev) => {
-            try {
-                const importedData = window.parseMetaCSV(ev.target.result);
-                if (importedData.length > 0) {
-                    if (confirm(`Fant ${importedData.length} rader. Vil du importere disse?`)) {
-                        importedData.forEach(row => onAddKpi(row));
-                    }
-                } else {
-                    alert("Fant ingen gyldige data. Sjekk at filen er en standard Meta CSV eksport.");
-                }
-            } catch (err) { console.error(err); alert("Feil ved lesing av fil."); }
+            const res = window.parseMetaCSV(ev.target.result);
+            if(res.length && confirm(`Fant ${res.length} rader. Importere?`)) res.forEach(r => onAddKpi(r));
         };
         reader.readAsText(file);
         e.target.value = null;
     };
 
-    const sortedData = [...(kpiData || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    // NY LOGIKK: Vis bare de 5 første hvis ikke "isTableExpanded" er sant
-    const visibleData = isTableExpanded ? sortedData : sortedData.slice(0, 5);
-
-    const fmt = (num, decimals = 0) => num ? num.toLocaleString('nb-NO', { maximumFractionDigits: decimals }) : '-';
-    const kr = (num) => num ? num.toLocaleString('nb-NO', { maximumFractionDigits: 2 }) + ' kr' : '-';
-
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="space-y-8 animate-in fade-in duration-500 pb-20">
             
-            <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm gap-4">
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <Icon name="bar-chart-2" size={24} className="text-indigo-600"/> 
-                    Meta Rapportering
-                </h2>
-                <div className="flex gap-3">
-                    <label className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 cursor-pointer transition-colors">
-                        <Icon name="file-spreadsheet" size={16} /> Last opp Meta CSV
+            {/* 1. KONTROLLPANEL (Filter & Import) */}
+            <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm sticky top-0 z-30">
+                <div className="flex items-center gap-2">
+                     <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mr-4">
+                        <Icon name="bar-chart-2" size={24} className="text-indigo-600"/> 
+                        Meta Analyse
+                    </h2>
+                    
+                    {/* DATOFILTER */}
+                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                        <select 
+                            className="bg-transparent text-sm font-bold text-slate-700 outline-none px-2 py-1 cursor-pointer"
+                            value={filterType}
+                            onChange={(e) => setFilterType(e.target.value)}
+                        >
+                            <option value="today">I dag</option>
+                            <option value="last7">Siste 7 dager</option>
+                            <option value="last30">Siste 30 dager</option>
+                            <option value="thisMonth">Denne måneden</option>
+                            <option value="lastMonth">Forrige måned</option>
+                            <option value="custom">Egendefinert...</option>
+                        </select>
+                    </div>
+
+                    {/* DATOVELGERE (Viser alltid hvis custom, eller for info) */}
+                    {(filterType === 'custom' || true) && (
+                        <div className={`flex items-center gap-2 text-sm transition-all ${filterType !== 'custom' ? 'opacity-50 grayscale pointer-events-none hidden md:flex' : ''}`}>
+                            <input type="date" className="border rounded px-2 py-1 bg-white" value={dateRange.start} onChange={(e) => { setDateRange({...dateRange, start: e.target.value}); setFilterType('custom'); }} />
+                            <span className="text-slate-400">til</span>
+                            <input type="date" className="border rounded px-2 py-1 bg-white" value={dateRange.end} onChange={(e) => { setDateRange({...dateRange, end: e.target.value}); setFilterType('custom'); }} />
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex gap-2 w-full xl:w-auto">
+                    <label className="flex-1 xl:flex-none justify-center bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors">
+                        <Icon name="file-spreadsheet" size={14} /> CSV Import
                         <input type="file" accept=".csv" className="hidden" ref={csvInputRef} onChange={handleCsvUpload} />
                     </label>
-                    <button onClick={() => setIsFormOpen(!isFormOpen)} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${isFormOpen ? 'bg-slate-200 text-slate-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-                        <Icon name={isFormOpen ? "x" : "plus"} size={16} /> {isFormOpen ? "Lukk skjema" : "Manuell inntasting"}
+                    <button onClick={() => setIsFormOpen(!isFormOpen)} className="flex-1 xl:flex-none justify-center px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors bg-indigo-600 text-white hover:bg-indigo-700">
+                        <Icon name={isFormOpen ? "x" : "plus"} size={14} /> Manuell
                     </button>
                 </div>
             </div>
 
+            {/* 2. SCORECARDS */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <ScoreCard title="Totalt Forbruk" value={totals.spend} previousValue={prevTotals.spend} isCurrency={true} isReverse={true} />
+                <ScoreCard title="Link Clicks" value={totals.clicks} previousValue={prevTotals.clicks} />
+                <ScoreCard title="Snitt CPC (Link)" value={totals.cpc} previousValue={prevTotals.cpc} isCurrency={true} isReverse={true} />
+                <ScoreCard title="CTR (Click-Through)" value={totals.ctr} previousValue={prevTotals.ctr} unit="%" />
+            </div>
+
+            {/* 3. GRAFER */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm col-span-1 lg:col-span-2">
+                    <h3 className="text-sm font-bold text-slate-700 mb-6 flex justify-between">
+                        <span>💰 Kostnad vs Effekt (ROI)</span>
+                        <span className="text-xs font-normal text-slate-400">Er trafikken verdt prisen?</span>
+                    </h3>
+                    <CostEffectChart data={currentData} />
+                </div>
+                
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-700 mb-6 flex justify-between">
+                        <span>📈 Prisutvikling</span>
+                        <span className="text-xs font-normal text-slate-400">Blir annonsene dyrere?</span>
+                    </h3>
+                    <PriceTrendChart data={currentData} />
+                </div>
+
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-700 mb-6 flex justify-between">
+                        <span>📢 Metning (Frequency)</span>
+                        <span className="text-xs font-normal text-slate-400">Maser vi på folk?</span>
+                    </h3>
+                    <SaturationChart data={currentData} />
+                </div>
+            </div>
+
+            {/* 4. MANUELT SKJEMA */}
             {isFormOpen && (
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-lg animate-in slide-in-from-top-2">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 border-b pb-2">Ny registrering</h3>
-                    <form onSubmit={handleSubmit} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        <div className="col-span-1 md:col-span-2 lg:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Rapportering Start</label><input type="date" name="date" value={form.date} onChange={handleChange} className="w-full border p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Reach</label><input type="number" name="reach" value={form.reach} onChange={handleChange} className="w-full border p-2 rounded" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Impressions</label><input type="number" name="impressions" value={form.impressions} onChange={handleChange} className="w-full border p-2 rounded" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Amount Spent (NOK)</label><input type="number" step="0.01" name="spend" value={form.spend} onChange={handleChange} className="w-full border p-2 rounded bg-yellow-50" placeholder="kr" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Frequency</label><input type="number" step="0.01" name="frequency" value={form.frequency} onChange={handleChange} className="w-full border p-2 rounded" placeholder="1.0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Link Clicks</label><input type="number" name="linkClicks" value={form.linkClicks} onChange={handleChange} className="w-full border p-2 rounded" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPC (Link)</label><input type="number" step="0.01" name="cpcLink" value={form.cpcLink} onChange={handleChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPM</label><input type="number" step="0.01" name="cpm" value={form.cpm} onChange={handleChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Clicks (All)</label><input type="number" name="clicksAll" value={form.clicksAll} onChange={handleChange} className="w-full border p-2 rounded" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CTR (All)</label><input type="number" step="0.01" name="ctrAll" value={form.ctrAll} onChange={handleChange} className="w-full border p-2 rounded" placeholder="%" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPC (All)</label><input type="number" step="0.01" name="cpcAll" value={form.cpcAll} onChange={handleChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Landing Views</label><input type="number" name="landingPageViews" value={form.landingPageViews} onChange={handleChange} className="w-full border p-2 rounded bg-green-50" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Cost / Landing</label><input type="number" step="0.01" name="costPerLandingPageView" value={form.costPerLandingPageView} onChange={handleChange} className="w-full border p-2 rounded bg-green-50" placeholder="kr" /></div>
+                     <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 border-b pb-2">Ny registrering</h3>
+                    <form onSubmit={handleFormSubmit} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        <div className="col-span-1 md:col-span-2 lg:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Dato</label><input type="date" name="date" value={form.date} onChange={handleFormChange} className="w-full border p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Reach</label><input type="number" name="reach" value={form.reach} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Impressions</label><input type="number" name="impressions" value={form.impressions} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Spend (NOK)</label><input type="number" step="0.01" name="spend" value={form.spend} onChange={handleFormChange} className="w-full border p-2 rounded bg-yellow-50" placeholder="kr" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Frequency</label><input type="number" step="0.01" name="frequency" value={form.frequency} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="1.0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Link Clicks</label><input type="number" name="linkClicks" value={form.linkClicks} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPC (Link)</label><input type="number" step="0.01" name="cpcLink" value={form.cpcLink} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPM</label><input type="number" step="0.01" name="cpm" value={form.cpm} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Clicks (All)</label><input type="number" name="clicksAll" value={form.clicksAll} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CTR (All)</label><input type="number" step="0.01" name="ctrAll" value={form.ctrAll} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="%" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPC (All)</label><input type="number" step="0.01" name="cpcAll" value={form.cpcAll} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Landing Views</label><input type="number" name="landingPageViews" value={form.landingPageViews} onChange={handleFormChange} className="w-full border p-2 rounded bg-green-50" placeholder="0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Cost / Landing</label><input type="number" step="0.01" name="costPerLandingPageView" value={form.costPerLandingPageView} onChange={handleFormChange} className="w-full border p-2 rounded bg-green-50" placeholder="kr" /></div>
                         <div className="col-span-1 md:col-span-2 lg:col-span-5 flex justify-end mt-2"><button type="submit" className="bg-indigo-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-indigo-700">Lagre</button></div>
                     </form>
                 </div>
             )}
 
+            {/* 5. DATATABELL */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="max-h-[800px] overflow-auto custom-scrollbar">
-                    {sortedData.length > 0 ? (
-                        <table className="w-full text-xs text-left whitespace-nowrap">
-                            <thead className="text-[10px] font-bold text-slate-500 uppercase bg-slate-100 sticky top-0 z-10">
-                                <tr>
-                                    <th className="px-3 py-3 border-b shadow-sm bg-slate-100 sticky left-0 z-20">Dato</th>
-                                    <th className="px-3 py-3 border-b text-right bg-yellow-50">Spend</th>
-                                    <th className="px-3 py-3 border-b text-right">Impr.</th>
-                                    <th className="px-3 py-3 border-b text-right">Reach</th>
-                                    <th className="px-3 py-3 border-b text-right">Freq.</th>
-                                    <th className="px-3 py-3 border-b text-right">CPM</th>
-                                    <th className="px-3 py-3 border-b text-right bg-blue-50">Link Clicks</th>
-                                    <th className="px-3 py-3 border-b text-right bg-blue-50">CPC (Link)</th>
-                                    <th className="px-3 py-3 border-b text-right bg-green-50">Land. Views</th>
-                                    <th className="px-3 py-3 border-b text-right bg-green-50">Cost/Land.</th>
-                                    <th className="px-3 py-3 border-b text-right">Clicks (All)</th>
-                                    <th className="px-3 py-3 border-b text-right">CTR (All)</th>
-                                    <th className="px-3 py-3 border-b text-center">Slett</th>
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <h3 className="font-bold text-slate-700 text-sm">Rådata</h3>
+                    <span className="text-xs text-slate-500">{sortedData.length} oppføringer totalt</span>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left whitespace-nowrap">
+                        <thead className="text-[10px] font-bold text-slate-500 uppercase bg-white border-b">
+                            <tr>
+                                <th className="px-3 py-3">Dato</th>
+                                <th className="px-3 py-3 text-right">Spend</th>
+                                <th className="px-3 py-3 text-right">Impr.</th>
+                                <th className="px-3 py-3 text-right">Reach</th>
+                                <th className="px-3 py-3 text-right">Freq.</th>
+                                <th className="px-3 py-3 text-right">CPM</th>
+                                <th className="px-3 py-3 text-right">Link Clicks</th>
+                                <th className="px-3 py-3 text-right">CPC (Link)</th>
+                                <th className="px-3 py-3 text-right">CTR (Link)</th>
+                                <th className="px-3 py-3 text-center">Slett</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {visibleTableData.map(row => (
+                                <tr key={row.id} className="hover:bg-slate-50 group transition-colors">
+                                    <td className="px-3 py-2 font-medium text-slate-700">{row.date}</td>
+                                    <td className="px-3 py-2 text-right font-bold text-slate-800">{formatCurrency(row.spend)}</td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{formatNumber(row.impressions)}</td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{formatNumber(row.reach)}</td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{formatDec(row.frequency)}</td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{formatCurrency(row.cpm)}</td>
+                                    <td className="px-3 py-2 text-right font-medium text-indigo-600">{formatNumber(row.linkClicks)}</td>
+                                    <td className="px-3 py-2 text-right text-indigo-600">{formatDec(row.cpcLink)} kr</td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{row.ctrLink ? formatDec(row.ctrLink) + '%' : ((row.linkClicks/row.impressions)*100).toFixed(2) + '%'}</td>
+                                    <td className="px-3 py-2 text-center">
+                                        <button onClick={() => onDeleteKpi(row.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1"><Icon name="trash-2" size={14} /></button>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {visibleData.map(row => (
-                                    <tr key={row.id} className="hover:bg-slate-50 group transition-colors">
-                                        <td className="px-3 py-2 font-medium text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 shadow-[1px_0_5px_-2px_rgba(0,0,0,0.1)]">{row.date}</td>
-                                        <td className="px-3 py-2 text-right font-bold text-slate-800 bg-yellow-50/50">{kr(row.spend)}</td>
-                                        <td className="px-3 py-2 text-right text-slate-600">{fmt(row.impressions)}</td>
-                                        <td className="px-3 py-2 text-right text-slate-600">{fmt(row.reach)}</td>
-                                        <td className="px-3 py-2 text-right text-slate-600">{fmt(row.frequency, 2)}</td>
-                                        <td className="px-3 py-2 text-right text-slate-600">{kr(row.cpm)}</td>
-                                        <td className="px-3 py-2 text-right font-medium text-blue-700 bg-blue-50/30">{fmt(row.linkClicks)}</td>
-                                        <td className="px-3 py-2 text-right text-blue-700 bg-blue-50/30">{kr(row.cpcLink)}</td>
-                                        <td className="px-3 py-2 text-right font-medium text-emerald-700 bg-green-50/30">{fmt(row.landingPageViews)}</td>
-                                        <td className="px-3 py-2 text-right text-emerald-700 bg-green-50/30">{kr(row.costPerLandingPageView)}</td>
-                                        <td className="px-3 py-2 text-right text-slate-400">{fmt(row.clicksAll)}</td>
-                                        <td className="px-3 py-2 text-right text-slate-400">{fmt(row.ctrAll, 2)}%</td>
-                                        <td className="px-3 py-2 text-center">
-                                            <button onClick={() => onDeleteKpi(row.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1" title="Slett linje"><Icon name="trash-2" size={14} /></button>
-                                        </td>
-                                    </tr>
-                                ))}
-
-                                {/* NY FUNKSJONALITET: EKSPANDER-KNAPP */}
-                                {sortedData.length > 5 && (
-                                    <tr 
-                                        onClick={() => setIsTableExpanded(!isTableExpanded)} 
-                                        className="bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors border-t border-slate-200"
-                                    >
-                                        <td colSpan="13" className="py-3 text-center">
-                                            <div className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
-                                                {isTableExpanded ? (
-                                                    <>Skjul liste <Icon name="chevron-up" size={14}/></>
-                                                ) : (
-                                                    <>Vis eldre dager ({sortedData.length - 5} skjult) <Icon name="chevron-down" size={14}/></>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <div className="p-10 text-center text-slate-400"><p className="mb-2">Ingen data lastet opp.</p><p className="text-sm">Trykk "Last opp Meta CSV" eller legg inn manuelt.</p></div>
-                    )}
+                            ))}
+                            {sortedData.length > 5 && (
+                                <tr onClick={() => setIsTableExpanded(!isTableExpanded)} className="bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors border-t border-slate-200">
+                                    <td colSpan="10" className="py-3 text-center">
+                                        <div className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
+                                            {isTableExpanded ? <>Skjul liste <Icon name="chevron-up" size={14}/></> : <>Vis eldre dager ({sortedData.length - 5} skjult) <Icon name="chevron-down" size={14}/></>}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
