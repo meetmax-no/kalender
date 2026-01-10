@@ -1,38 +1,69 @@
 // --- HJELPERE FOR FORMATERING ---
-const formatCurrency = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') : '-';
-const formatNumber = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') : '-';
-const formatDec = (val) => val !== undefined && val !== null ? val.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-';
+const formatCurrency = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') : '0';
+const formatNumber = (val) => val !== undefined && val !== null ? Math.round(val).toLocaleString('nb-NO') : '0';
+const formatDec = (val) => val !== undefined && val !== null ? val.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0,0';
+const formatDateShort = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    return d.getDate() + '.' + (d.getMonth() + 1); // F.eks "14.1"
+};
 
 // --- GRAFKOMPONENTER (SVG) ---
 
+// Felles Y-akse komponent
 const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left' }) => {
     const mid = max / 2;
+    const xPos = align === 'left' ? -10 : 110;
+    const anchor = align === 'left' ? 'end' : 'start';
     return (
-        <g className="text-[10px]" fill={color} textAnchor={align === 'left' ? 'end' : 'start'}>
-            <text x={align === 'left' ? -5 : 105} y="4" alignmentBaseline="middle">{formatNumber(max)}{unit}</text>
-            <text x={align === 'left' ? -5 : 105} y="54" alignmentBaseline="middle">{formatNumber(mid)}{unit}</text>
-            <text x={align === 'left' ? -5 : 105} y="100" alignmentBaseline="middle">0{unit}</text>
+        <g className="text-[10px] font-medium" fill={color} textAnchor={anchor}>
+            <text x={xPos} y="4" alignmentBaseline="middle">{formatNumber(max)}{unit}</text>
+            <text x={xPos} y="50" alignmentBaseline="middle">{formatNumber(mid)}{unit}</text>
+            <text x={xPos} y="100" alignmentBaseline="middle">0{unit}</text>
+        </g>
+    );
+};
+
+// Felles X-akse (Datoer)
+const XAxis = ({ data }) => {
+    if (!data || data.length === 0) return null;
+    
+    // Vis logikk: Hvis over 10 dager, vis færre labels for å unngå kaos
+    const step = Math.ceil(data.length / 8); 
+    
+    return (
+        <g className="text-[9px] font-medium text-slate-400" textAnchor="middle">
+            {data.map((d, i) => {
+                if (i % step !== 0 && i !== data.length - 1) return null; // Hopp over noen, men vis alltid siste
+                
+                // Posisjonering: Håndter både 1 dag (senter) og flere dager (fordelt)
+                const x = data.length === 1 ? 50 : (i / (data.length - 1)) * 100;
+                
+                return (
+                    <text key={i} x={x} y="115">{formatDateShort(d.date)}</text>
+                );
+            })}
         </g>
     );
 };
 
 const GridLines = () => (
-    <g stroke="#f1f5f9" strokeWidth="1">
+    <g stroke="#f1f5f9" strokeWidth="1" strokeDasharray="0">
         <line x1="0" y1="0" x2="100" y2="0" />
-        <line x1="0" y1="50" x2="100" y2="50" />
+        <line x1="0" y1="50" x2="100" y2="50" strokeDasharray="4" /> {/* Stiplet midtlinje */}
         <line x1="0" y1="100" x2="100" y2="100" />
     </g>
 );
 
-// Graf 1: ROI
+// Graf 1: ROI (Spend vs Clicks)
 const CostEffectChart = ({ data }) => {
-    if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
+    if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
     
     const maxSpend = Math.max(...sorted.map(d => d.spend)) || 100;
     const maxClicks = Math.max(...sorted.map(d => d.linkClicks)) || 10;
     const count = sorted.length;
-    const barWidth = count === 1 ? 20 : (100 / count) * 0.7; 
+    const barWidth = count === 1 ? 20 : (100 / count) * 0.6; 
     const [hover, setHover] = React.useState(null);
 
     const points = sorted.map((d, i) => {
@@ -42,52 +73,74 @@ const CostEffectChart = ({ data }) => {
     }).join(' ');
 
     return (
-        <div className="relative h-56 w-full pl-10 pr-10 pt-4 pb-6" onMouseLeave={() => setHover(null)}>
+        <div className="relative h-64 w-full pl-12 pr-12 pt-6 pb-8" onMouseLeave={() => setHover(null)}>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
                 <GridLines />
-                <YAxis max={maxSpend} unit=" kr" color="#6366f1" align="left" />
-                <YAxis max={maxClicks} unit="" color="#818cf8" align="right" />
+                <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" />
+                <YAxis max={maxClicks} unit="" color="#6366f1" align="right" />
+                <XAxis data={sorted} />
 
+                {/* BARS (Spend) */}
                 {sorted.map((d, i) => {
                     const height = (d.spend / maxSpend) * 100;
                     const centerX = count === 1 ? 50 : (i / (count - 1)) * 100;
                     const finalX = centerX - (barWidth / 2);
                     return (
-                        <rect key={i} x={finalX} y={100 - height} width={barWidth} height={height} fill={hover === i ? "#c7d2fe" : "#e0e7ff"} rx="1" 
-                              onMouseEnter={() => setHover(i)} />
+                        <rect key={i} x={finalX} y={100 - height} width={barWidth} height={height} fill={hover === i ? "#a5b4fc" : "#e0e7ff"} rx="0.5" 
+                              onMouseEnter={() => setHover(i)} className="transition-all duration-200" />
                     );
                 })}
                 
+                {/* LINE (Clicks) */}
                 {count > 1 ? (
-                     <polyline fill="none" stroke="#6366f1" strokeWidth="2" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+                     <polyline fill="none" stroke="#6366f1" strokeWidth="2" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
                 ) : (
                      <line x1="40" y1={100 - ((sorted[0].linkClicks / maxClicks) * 100)} x2="60" y2={100 - ((sorted[0].linkClicks / maxClicks) * 100)} stroke="#6366f1" strokeWidth="2" vectorEffect="non-scaling-stroke" />
                 )}
+
+                {/* DOTS (Clicks) */}
+                {sorted.map((d, i) => {
+                    const x = count === 1 ? 50 : (i / (count - 1)) * 100;
+                    const y = 100 - ((d.linkClicks / maxClicks) * 100);
+                    return (
+                        <circle key={i} cx={x} cy={y} r="1.5" fill="white" stroke="#6366f1" strokeWidth="1" 
+                                className={`transition-all duration-200 ${hover === i ? 'r-[3] stroke-[1]' : ''}`} />
+                    );
+                })}
+
+                {/* HOVER ZONES */}
+                {sorted.map((d, i) => {
+                    const x = count === 1 ? 50 : (i / (count - 1)) * 100;
+                    return <rect key={i} x={x - (100/count)/2} y="0" width={100/count} height="100" fill="transparent" onMouseEnter={() => setHover(i)} />;
+                })}
             </svg>
+            
+            {/* TOOLTIP */}
             {hover !== null && sorted[hover] && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-800 text-white p-2 rounded shadow-lg text-xs pointer-events-none z-20 whitespace-nowrap">
-                    <div className="font-bold border-b border-slate-600 mb-1 pb-1">{sorted[hover].date}</div>
-                    <div className="text-indigo-200">Spend: {formatCurrency(sorted[hover].spend)} kr</div>
-                    <div className="text-white">Clicks: {formatNumber(sorted[hover].linkClicks)}</div>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-2 rounded-lg shadow-xl text-xs pointer-events-none z-20 whitespace-nowrap -mt-2">
+                    <div className="font-bold text-slate-300 border-b border-slate-700 mb-1 pb-1 text-[10px] uppercase">{sorted[hover].date}</div>
+                    <div className="flex justify-between gap-4"><span className="text-indigo-200">Spend:</span> <span className="font-bold">{formatCurrency(sorted[hover].spend)} kr</span></div>
+                    <div className="flex justify-between gap-4"><span className="text-white">Clicks:</span> <span className="font-bold">{formatNumber(sorted[hover].linkClicks)}</span></div>
                 </div>
             )}
-             <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
-                <span className="text-indigo-500 flex items-center gap-1"><span className="w-2 h-0.5 bg-indigo-500"></span> Link Clicks</span>
+             <div className="absolute top-[-10px] right-0 flex gap-3 text-[10px] font-bold">
+                <span className="text-indigo-600 flex items-center gap-1"><span className="w-2 h-0.5 bg-indigo-600"></span> Link Clicks</span>
                 <span className="text-indigo-300 flex items-center gap-1"><span className="w-2 h-2 bg-indigo-100 border border-indigo-200"></span> Spend</span>
             </div>
         </div>
     );
 };
 
-// Graf 2: Pris
+// Graf 2: Pris (CPC vs CPM)
 const PriceTrendChart = ({ data }) => {
-    if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
+    if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
     const processed = sorted.map(d => ({
         ...d,
         cpc: d.cpcLink || (d.linkClicks > 0 ? d.spend / d.linkClicks : 0),
         cpm: d.cpm || (d.impressions > 0 ? (d.spend / d.impressions) * 1000 : 0)
     }));
+    
     const maxCpc = Math.max(...processed.map(d => d.cpc)) || 10;
     const maxCpm = Math.max(...processed.map(d => d.cpm)) || 100;
     const count = processed.length;
@@ -100,11 +153,13 @@ const PriceTrendChart = ({ data }) => {
     }).join(' ');
 
     return (
-        <div className="relative h-56 w-full pl-10 pr-10 pt-4 pb-6" onMouseLeave={() => setHover(null)}>
+        <div className="relative h-64 w-full pl-12 pr-12 pt-6 pb-8" onMouseLeave={() => setHover(null)}>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxCpc} unit=" kr" color="#10b981" align="left" />
                 <YAxis max={maxCpm} unit=" kr" color="#f59e0b" align="right" />
+                <XAxis data={sorted} />
+                
                 {count > 1 ? (
                     <>
                         <polyline fill="none" stroke="#f59e0b" strokeWidth="2" points={getPoints('cpm', maxCpm)} vectorEffect="non-scaling-stroke" strokeDasharray="4" className="opacity-60" />
@@ -116,29 +171,31 @@ const PriceTrendChart = ({ data }) => {
                          <circle cx="50" cy={100 - ((processed[0].cpc / maxCpc) * 100)} r="2" fill="#10b981" />
                     </>
                 )}
+
+                {/* HOVER ZONES */}
                 {processed.map((d, i) => {
                     const x = count === 1 ? 50 : (i / (count - 1)) * 100;
-                    return <rect key={i} x={x - 4} y="0" width="8" height="100" fill="transparent" className="cursor-pointer" onMouseEnter={() => setHover(i)} />;
+                    return <rect key={i} x={x - (100/count)/2} y="0" width={100/count} height="100" fill="transparent" onMouseEnter={() => setHover(i)} />;
                 })}
             </svg>
             {hover !== null && processed[hover] && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-800 text-white p-2 rounded shadow-lg text-xs pointer-events-none z-20 whitespace-nowrap">
-                    <div className="font-bold border-b border-slate-600 mb-1 pb-1">{processed[hover].date}</div>
-                    <div className="text-emerald-400">CPC: {formatDec(processed[hover].cpc)} kr</div>
-                    <div className="text-amber-400">CPM: {formatCurrency(processed[hover].cpm)} kr</div>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-2 rounded-lg shadow-xl text-xs pointer-events-none z-20 whitespace-nowrap -mt-2">
+                    <div className="font-bold text-slate-300 border-b border-slate-700 mb-1 pb-1 text-[10px] uppercase">{processed[hover].date}</div>
+                    <div className="flex justify-between gap-4"><span className="text-emerald-400">CPC:</span> <span className="font-bold">{formatDec(processed[hover].cpc)} kr</span></div>
+                    <div className="flex justify-between gap-4"><span className="text-amber-400">CPM:</span> <span className="font-bold">{formatCurrency(processed[hover].cpm)} kr</span></div>
                 </div>
             )}
-             <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
-                <span className="text-emerald-500 flex items-center gap-1"><span className="w-2 h-0.5 bg-emerald-500"></span> CPC</span>
+             <div className="absolute top-[-10px] right-0 flex gap-3 text-[10px] font-bold">
+                <span className="text-emerald-600 flex items-center gap-1"><span className="w-2 h-0.5 bg-emerald-500"></span> CPC</span>
                 <span className="text-amber-500 flex items-center gap-1"><span className="w-2 h-0.5 bg-amber-500 border-b border-amber-500 border-dashed"></span> CPM</span>
             </div>
         </div>
     );
 };
 
-// Graf 3: Metning
+// Graf 3: Metning (Impressions vs Reach)
 const SaturationChart = ({ data }) => {
-    if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-xs">Ingen data i valgt periode</div>;
+    if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
     const maxVal = Math.max(...sorted.map(d => Math.max(d.impressions, d.reach))) || 1000;
     const count = sorted.length;
@@ -151,14 +208,16 @@ const SaturationChart = ({ data }) => {
     };
 
     return (
-        <div className="relative h-56 w-full pl-10 pr-2 pt-4 pb-6" onMouseLeave={() => setHover(null)}>
+        <div className="relative h-64 w-full pl-12 pr-12 pt-6 pb-8" onMouseLeave={() => setHover(null)}>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxVal} unit="" color="#64748b" align="left" />
+                <XAxis data={sorted} />
+
                 {count > 1 ? (
                     <>
-                        <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                        <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.2)" stroke="#a855f7" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                        <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                        <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.1)" stroke="#a855f7" strokeWidth="2" vectorEffect="non-scaling-stroke" />
                     </>
                 ) : (
                      <>
@@ -166,18 +225,21 @@ const SaturationChart = ({ data }) => {
                         <rect x="55" y={100 - ((sorted[0].reach / maxVal) * 100)} width="10" height={(sorted[0].reach / maxVal) * 100} fill="rgba(168, 85, 247, 0.5)" />
                      </>
                 )}
-                {sorted.map((d, i) => (
-                    <rect key={i} x={(count === 1 ? 50 : (i / (count - 1)) * 100) - 2} y="0" width="4" height="100" fill="transparent" onMouseEnter={() => setHover(i)} />
-                ))}
+                
+                {/* HOVER ZONES */}
+                {sorted.map((d, i) => {
+                    const x = count === 1 ? 50 : (i / (count - 1)) * 100;
+                    return <rect key={i} x={x - (100/count)/2} y="0" width={100/count} height="100" fill="transparent" onMouseEnter={() => setHover(i)} />;
+                })}
             </svg>
             {hover !== null && sorted[hover] && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-800 text-white p-2 rounded shadow-lg text-xs pointer-events-none z-20 whitespace-nowrap">
-                    <div className="font-bold border-b border-slate-600 mb-1 pb-1">{sorted[hover].date}</div>
-                    <div className="text-blue-300">Impr: {formatNumber(sorted[hover].impressions)}</div>
-                    <div className="text-purple-300">Reach: {formatNumber(sorted[hover].reach)}</div>
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-2 rounded-lg shadow-xl text-xs pointer-events-none z-20 whitespace-nowrap -mt-2">
+                    <div className="font-bold text-slate-300 border-b border-slate-700 mb-1 pb-1 text-[10px] uppercase">{sorted[hover].date}</div>
+                    <div className="flex justify-between gap-4"><span className="text-blue-300">Impr:</span> <span className="font-bold">{formatNumber(sorted[hover].impressions)}</span></div>
+                    <div className="flex justify-between gap-4"><span className="text-purple-300">Reach:</span> <span className="font-bold">{formatNumber(sorted[hover].reach)}</span></div>
                 </div>
             )}
-            <div className="absolute top-[-25px] right-0 flex gap-3 text-[10px] font-bold">
+            <div className="absolute top-[-10px] right-0 flex gap-3 text-[10px] font-bold">
                 <span className="text-blue-500 flex items-center gap-1"><span className="w-2 h-2 bg-blue-100 border border-blue-500"></span> Impr.</span>
                 <span className="text-purple-500 flex items-center gap-1"><span className="w-2 h-2 bg-purple-100 border border-purple-500"></span> Reach</span>
             </div>
