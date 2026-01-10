@@ -8,17 +8,52 @@ const formatDateShort = (dateStr) => {
     return d.getDate() + '.' + (d.getMonth() + 1); 
 };
 
+// --- KONFIGURASJON FOR GRAFER ---
+// Vi bruker et bredt koordinatsystem (300x150) for å matche boksene bedre
+const G = {
+    w: 300, // Total bredde
+    h: 150, // Total høyde
+    padL: 35, // Venstre marg (for Y-akse)
+    padR: 35, // Høyre marg (for Y-akse)
+    padT: 20, // Topp marg
+    padB: 20, // Bunn marg
+    
+    // Hjelpefunksjoner for å plassere ting
+    graphW: () => 300 - 35 - 35, // 230
+    graphH: () => 150 - 20 - 20, // 110
+    
+    // Konverter data til Y-koordinat
+    y: (val, max) => 20 + (110 - (val / (max || 1)) * 110),
+    
+    // Konverter index til X-koordinat
+    x: (i, count) => {
+        if (count <= 1) return 150; // Senter
+        return 35 + (i / (count - 1)) * 230;
+    }
+};
+
 // --- GRAFKOMPONENTER (SVG) ---
+
+const GridLines = () => (
+    <g stroke="#f1f5f9" strokeWidth="1">
+        {/* Topp */}
+        <line x1={G.padL} y1={G.padT} x2={G.w - G.padR} y2={G.padT} />
+        {/* Midt */}
+        <line x1={G.padL} y1={G.padT + G.graphH()/2} x2={G.w - G.padR} y2={G.padT + G.graphH()/2} strokeDasharray="4" />
+        {/* Bunn */}
+        <line x1={G.padL} y1={G.h - G.padB} x2={G.w - G.padR} y2={G.h - G.padB} />
+    </g>
+);
 
 const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left' }) => {
     const mid = max / 2;
-    const xPos = align === 'left' ? -5 : 105; 
+    const xPos = align === 'left' ? G.padL - 5 : G.w - G.padR + 5;
     const anchor = align === 'left' ? 'end' : 'start';
     return (
-        <g className="text-[8px] font-medium" fill={color} textAnchor={anchor}>
-            <text x={xPos} y="4" alignmentBaseline="middle">{formatNumber(max)}{unit}</text>
-            <text x={xPos} y="50" alignmentBaseline="middle">{formatNumber(mid)}{unit}</text>
-            <text x={xPos} y="100" alignmentBaseline="middle">0{unit}</text>
+        <g fill={color} textAnchor={anchor} fontSize="8" fontWeight="500" style={{ fontFamily: 'sans-serif' }}>
+            <text x={xPos} y={G.padT + 3} alignmentBaseline="middle">{formatNumber(max)}{unit}</text>
+            <text x={xPos} y={G.padT + G.graphH()/2 + 3} alignmentBaseline="middle">{formatNumber(mid)}{unit}</text>
+            <text x={xPos} y={G.h - G.padB + 3} alignmentBaseline="middle">0{unit}</text>
         </g>
     );
 };
@@ -27,23 +62,15 @@ const XAxis = ({ data }) => {
     if (!data || data.length === 0) return null;
     const step = Math.ceil(data.length / 8); 
     return (
-        <g className="text-[8px] font-medium text-slate-400" textAnchor="middle">
+        <g fill="#94a3b8" textAnchor="middle" fontSize="8" style={{ fontFamily: 'sans-serif' }}>
             {data.map((d, i) => {
                 if (i % step !== 0 && i !== data.length - 1) return null; 
-                const x = data.length === 1 ? 50 : (i / (data.length - 1)) * 100;
-                return <text key={i} x={x} y="112">{formatDateShort(d.date)}</text>;
+                const x = G.x(i, data.length);
+                return <text key={i} x={x} y={G.h - 5}>{formatDateShort(d.date)}</text>;
             })}
         </g>
     );
 };
-
-const GridLines = () => (
-    <g stroke="#f1f5f9" strokeWidth="1">
-        <line x1="0" y1="0" x2="100" y2="0" />
-        <line x1="0" y1="50" x2="100" y2="50" strokeDasharray="4" />
-        <line x1="0" y1="100" x2="100" y2="100" />
-    </g>
-);
 
 // Graf 1: ROI
 const CostEffectChart = ({ data }) => {
@@ -52,51 +79,52 @@ const CostEffectChart = ({ data }) => {
     const maxSpend = Math.max(...sorted.map(d => d.spend)) || 100;
     const maxClicks = Math.max(...sorted.map(d => d.linkClicks)) || 10;
     const count = sorted.length;
-    const barWidth = count === 1 ? 20 : (100 / count) * 0.6; 
     const [hover, setHover] = React.useState(null);
 
-    const points = sorted.map((d, i) => {
-        const x = count === 1 ? 50 : (i / (count - 1)) * 100;
-        const y = 100 - ((d.linkClicks / maxClicks) * 100);
-        return `${x},${y}`;
-    }).join(' ');
+    // Bars width logic
+    const barWidth = count === 1 ? 40 : (G.graphW() / count) * 0.6;
+
+    const points = sorted.map((d, i) => `${G.x(i, count)},${G.y(d.linkClicks, maxClicks)}`).join(' ');
 
     return (
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
-            <svg viewBox="-20 -10 140 130" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+            <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" />
                 <YAxis max={maxClicks} unit="" color="#6366f1" align="right" />
                 <XAxis data={sorted} />
 
+                {/* Bars */}
                 {sorted.map((d, i) => {
-                    const height = (d.spend / maxSpend) * 100;
-                    const centerX = count === 1 ? 50 : (i / (count - 1)) * 100;
-                    const finalX = centerX - (barWidth / 2);
+                    const barH = (d.spend / maxSpend) * G.graphH();
+                    const x = count === 1 ? 150 : G.x(i, count); // Senterpunkt
                     return (
-                        <rect key={i} x={finalX} y={100 - height} width={barWidth} height={height} fill={hover === i ? "#a5b4fc" : "#e0e7ff"} rx="0.5" 
+                        <rect key={i} x={x - barWidth/2} y={G.h - G.padB - barH} width={barWidth} height={barH} 
+                              fill={hover === i ? "#a5b4fc" : "#e0e7ff"} rx="1" 
                               onMouseEnter={() => setHover(i)} className="transition-all duration-200" />
                     );
                 })}
-                
+
+                {/* Line */}
                 {count > 1 ? (
-                     <polyline fill="none" stroke="#6366f1" strokeWidth="2" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+                    <polyline fill="none" stroke="#6366f1" strokeWidth="1.5" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
                 ) : (
-                     <line x1="40" y1={100 - ((sorted[0].linkClicks / maxClicks) * 100)} x2="60" y2={100 - ((sorted[0].linkClicks / maxClicks) * 100)} stroke="#6366f1" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                    <line x1="130" y1={G.y(sorted[0].linkClicks, maxClicks)} x2="170" y2={G.y(sorted[0].linkClicks, maxClicks)} stroke="#6366f1" strokeWidth="1.5" />
                 )}
 
-                {sorted.map((d, i) => {
-                    const x = count === 1 ? 50 : (i / (count - 1)) * 100;
-                    const y = 100 - ((d.linkClicks / maxClicks) * 100);
-                    return <circle key={i} cx={x} cy={y} r="1.5" fill="white" stroke="#6366f1" strokeWidth="1" className={`transition-all ${hover === i ? 'r-[3]' : ''}`} />;
-                })}
+                {/* Dots */}
+                {sorted.map((d, i) => (
+                    <circle key={i} cx={G.x(i, count)} cy={G.y(d.linkClicks, maxClicks)} r={hover===i?3:1.5} fill="white" stroke="#6366f1" strokeWidth="1.5" className="transition-all" />
+                ))}
 
+                {/* Hover Zones */}
                 {sorted.map((d, i) => {
-                    const x = count === 1 ? 50 : (i / (count - 1)) * 100;
-                    return <rect key={i} x={x - (100/count)/2} y="0" width={100/count} height="100" fill="transparent" onMouseEnter={() => setHover(i)} />;
+                    const zoneW = G.graphW() / count;
+                    return <rect key={i} x={G.x(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
                 })}
             </svg>
-            
+
+            {/* Tooltip */}
             {hover !== null && sorted[hover] && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-2 rounded-lg shadow-xl text-xs pointer-events-none z-20 whitespace-nowrap mt-2">
                     <div className="font-bold text-slate-300 border-b border-slate-700 mb-1 pb-1 text-[10px] uppercase">{sorted[hover].date}</div>
@@ -126,15 +154,12 @@ const PriceTrendChart = ({ data }) => {
     const count = processed.length;
     const [hover, setHover] = React.useState(null);
 
-    const getPoints = (key, max) => processed.map((d, i) => {
-        const x = count === 1 ? 50 : (i / (count - 1)) * 100;
-        const y = 100 - ((d[key] / max) * 100);
-        return `${x},${y}`;
-    }).join(' ');
+    const pointsCpc = processed.map((d, i) => `${G.x(i, count)},${G.y(d.cpc, maxCpc)}`).join(' ');
+    const pointsCpm = processed.map((d, i) => `${G.x(i, count)},${G.y(d.cpm, maxCpm)}`).join(' ');
 
     return (
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
-            <svg viewBox="-20 -10 140 130" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+            <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxCpc} unit=" kr" color="#10b981" align="left" />
                 <YAxis max={maxCpm} unit=" kr" color="#f59e0b" align="right" />
@@ -142,18 +167,19 @@ const PriceTrendChart = ({ data }) => {
                 
                 {count > 1 ? (
                     <>
-                        <polyline fill="none" stroke="#f59e0b" strokeWidth="2" points={getPoints('cpm', maxCpm)} vectorEffect="non-scaling-stroke" strokeDasharray="4" className="opacity-60" />
-                        <polyline fill="none" stroke="#10b981" strokeWidth="2" points={getPoints('cpc', maxCpc)} vectorEffect="non-scaling-stroke" />
+                        <polyline fill="none" stroke="#f59e0b" strokeWidth="1.5" points={pointsCpm} strokeDasharray="4" className="opacity-70" />
+                        <polyline fill="none" stroke="#10b981" strokeWidth="1.5" points={pointsCpc} />
                     </>
                 ) : (
                     <>
-                         <circle cx="50" cy={100 - ((processed[0].cpm / maxCpm) * 100)} r="2" fill="#f59e0b" />
-                         <circle cx="50" cy={100 - ((processed[0].cpc / maxCpc) * 100)} r="2" fill="#10b981" />
+                         <circle cx="150" cy={G.y(processed[0].cpm, maxCpm)} r="3" fill="#f59e0b" />
+                         <circle cx="150" cy={G.y(processed[0].cpc, maxCpc)} r="3" fill="#10b981" />
                     </>
                 )}
+                
                 {processed.map((d, i) => {
-                    const x = count === 1 ? 50 : (i / (count - 1)) * 100;
-                    return <rect key={i} x={x - (100/count)/2} y="0" width={100/count} height="100" fill="transparent" onMouseEnter={() => setHover(i)} />;
+                    const zoneW = G.graphW() / count;
+                    return <rect key={i} x={G.x(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
                 })}
             </svg>
             {hover !== null && processed[hover] && (
@@ -180,33 +206,33 @@ const SaturationChart = ({ data }) => {
     const [hover, setHover] = React.useState(null);
 
     const buildPath = (key) => {
-        if (count === 1) return ''; 
-        const points = sorted.map((d, i) => `${(i / (count - 1)) * 100},${100 - ((d[key] / maxVal) * 100)}`);
-        return `M0,100 ${points.map(p => 'L' + p).join(' ')} L100,100 Z`;
+        if (count <= 1) return ''; 
+        const points = sorted.map((d, i) => `${G.x(i, count)},${G.y(d[key], maxVal)}`);
+        return `M${G.x(0,count)},${G.h-G.padB} ${points.map(p => 'L' + p).join(' ')} L${G.x(count-1,count)},${G.h-G.padB} Z`;
     };
 
     return (
-        <div className="relative h-64 w-full pl-0 pr-0" onMouseLeave={() => setHover(null)}>
-            <svg viewBox="-20 -10 140 130" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+        <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
+            <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxVal} unit="" color="#64748b" align="left" />
                 <XAxis data={sorted} />
 
                 {count > 1 ? (
                     <>
-                        <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                        <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.1)" stroke="#a855f7" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                        <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" strokeWidth="1.5" />
+                        <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.1)" stroke="#a855f7" strokeWidth="1.5" />
                     </>
                 ) : (
                      <>
-                        <rect x="45" y={100 - ((sorted[0].impressions / maxVal) * 100)} width="10" height={(sorted[0].impressions / maxVal) * 100} fill="rgba(59, 130, 246, 0.5)" />
-                        <rect x="55" y={100 - ((sorted[0].reach / maxVal) * 100)} width="10" height={(sorted[0].reach / maxVal) * 100} fill="rgba(168, 85, 247, 0.5)" />
+                        <rect x="145" y={G.y(sorted[0].impressions, maxVal)} width="10" height={G.h - G.padB - G.y(sorted[0].impressions, maxVal)} fill="rgba(59, 130, 246, 0.5)" />
+                        <rect x="155" y={G.y(sorted[0].reach, maxVal)} width="10" height={G.h - G.padB - G.y(sorted[0].reach, maxVal)} fill="rgba(168, 85, 247, 0.5)" />
                      </>
                 )}
                 
                 {sorted.map((d, i) => {
-                    const x = count === 1 ? 50 : (i / (count - 1)) * 100;
-                    return <rect key={i} x={x - (100/count)/2} y="0" width={100/count} height="100" fill="transparent" onMouseEnter={() => setHover(i)} />;
+                    const zoneW = G.graphW() / count;
+                    return <rect key={i} x={G.x(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
                 })}
             </svg>
             {hover !== null && sorted[hover] && (
