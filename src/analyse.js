@@ -10,13 +10,12 @@ const formatDateShort = (dateStr) => {
 
 // --- GRAFKOMPONENTER (SVG) ---
 
-// Felles Y-akse
 const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left' }) => {
     const mid = max / 2;
     const xPos = align === 'left' ? -5 : 105; 
     const anchor = align === 'left' ? 'end' : 'start';
     return (
-        <g fill={color} textAnchor={anchor} fontSize="3.5" fontWeight="normal" style={{ fontFamily: 'sans-serif' }}>
+        <g className="text-[8px] font-medium" fill={color} textAnchor={anchor}>
             <text x={xPos} y="4" alignmentBaseline="middle">{formatNumber(max)}{unit}</text>
             <text x={xPos} y="50" alignmentBaseline="middle">{formatNumber(mid)}{unit}</text>
             <text x={xPos} y="100" alignmentBaseline="middle">0{unit}</text>
@@ -24,25 +23,24 @@ const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left' }) => {
     );
 };
 
-// Felles X-akse
 const XAxis = ({ data }) => {
     if (!data || data.length === 0) return null;
     const step = Math.ceil(data.length / 8); 
     return (
-        <g fill="#94a3b8" textAnchor="middle" fontSize="3.5" style={{ fontFamily: 'sans-serif' }}>
+        <g className="text-[8px] font-medium text-slate-400" textAnchor="middle">
             {data.map((d, i) => {
                 if (i % step !== 0 && i !== data.length - 1) return null; 
                 const x = data.length === 1 ? 50 : (i / (data.length - 1)) * 100;
-                return <text key={i} x={x} y="115">{formatDateShort(d.date)}</text>;
+                return <text key={i} x={x} y="112">{formatDateShort(d.date)}</text>;
             })}
         </g>
     );
 };
 
 const GridLines = () => (
-    <g stroke="#f1f5f9" strokeWidth="0.5">
+    <g stroke="#f1f5f9" strokeWidth="1">
         <line x1="0" y1="0" x2="100" y2="0" />
-        <line x1="0" y1="50" x2="100" y2="50" strokeDasharray="2" />
+        <line x1="0" y1="50" x2="100" y2="50" strokeDasharray="4" />
         <line x1="0" y1="100" x2="100" y2="100" />
     </g>
 );
@@ -65,7 +63,7 @@ const CostEffectChart = ({ data }) => {
 
     return (
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
-            <svg viewBox="-20 -10 140 135" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+            <svg viewBox="-20 -10 140 130" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" />
                 <YAxis max={maxClicks} unit="" color="#6366f1" align="right" />
@@ -82,15 +80,15 @@ const CostEffectChart = ({ data }) => {
                 })}
                 
                 {count > 1 ? (
-                     <polyline fill="none" stroke="#6366f1" strokeWidth="1" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+                     <polyline fill="none" stroke="#6366f1" strokeWidth="2" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
                 ) : (
-                     <line x1="40" y1={100 - ((sorted[0].linkClicks / maxClicks) * 100)} x2="60" y2={100 - ((sorted[0].linkClicks / maxClicks) * 100)} stroke="#6366f1" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                     <line x1="40" y1={100 - ((sorted[0].linkClicks / maxClicks) * 100)} x2="60" y2={100 - ((sorted[0].linkClicks / maxClicks) * 100)} stroke="#6366f1" strokeWidth="2" vectorEffect="non-scaling-stroke" />
                 )}
 
                 {sorted.map((d, i) => {
                     const x = count === 1 ? 50 : (i / (count - 1)) * 100;
                     const y = 100 - ((d.linkClicks / maxClicks) * 100);
-                    return <circle key={i} cx={x} cy={y} r="1" fill="white" stroke="#6366f1" strokeWidth="0.5" className={`transition-all ${hover === i ? 'r-[2]' : ''}`} />;
+                    return <circle key={i} cx={x} cy={y} r="1.5" fill="white" stroke="#6366f1" strokeWidth="1" className={`transition-all ${hover === i ? 'r-[3]' : ''}`} />;
                 })}
 
                 {sorted.map((d, i) => {
@@ -136,7 +134,7 @@ const PriceTrendChart = ({ data }) => {
 
     return (
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
-            <svg viewBox="-20 -10 140 135" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+            <svg viewBox="-20 -10 140 130" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxCpc} unit=" kr" color="#10b981" align="left" />
                 <YAxis max={maxCpm} unit=" kr" color="#f59e0b" align="right" />
@@ -144,8 +142,8 @@ const PriceTrendChart = ({ data }) => {
                 
                 {count > 1 ? (
                     <>
-                        <polyline fill="none" stroke="#f59e0b" strokeWidth="1" points={getPoints('cpm', maxCpm)} vectorEffect="non-scaling-stroke" strokeDasharray="3" className="opacity-60" />
-                        <polyline fill="none" stroke="#10b981" strokeWidth="1" points={getPoints('cpc', maxCpc)} vectorEffect="non-scaling-stroke" />
+                        <polyline fill="none" stroke="#f59e0b" strokeWidth="2" points={getPoints('cpm', maxCpm)} vectorEffect="non-scaling-stroke" strokeDasharray="4" className="opacity-60" />
+                        <polyline fill="none" stroke="#10b981" strokeWidth="2" points={getPoints('cpc', maxCpc)} vectorEffect="non-scaling-stroke" />
                     </>
                 ) : (
                     <>
@@ -189,7 +187,7 @@ const SaturationChart = ({ data }) => {
 
     return (
         <div className="relative h-64 w-full pl-0 pr-0" onMouseLeave={() => setHover(null)}>
-            <svg viewBox="-20 -10 140 135" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+            <svg viewBox="-20 -10 140 130" preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxVal} unit="" color="#64748b" align="left" />
                 <XAxis data={sorted} />
@@ -197,7 +195,7 @@ const SaturationChart = ({ data }) => {
                 {count > 1 ? (
                     <>
                         <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                        <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.1)" stroke="#a855f7" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                        <path d={buildPath('reach')} fill="rgba(168, 85, 247, 0.1)" stroke="#a855f7" strokeWidth="2" vectorEffect="non-scaling-stroke" />
                     </>
                 ) : (
                      <>
@@ -227,7 +225,7 @@ const SaturationChart = ({ data }) => {
 };
 
 // --- SCORECARD ---
-const ScoreCard = ({ title, value, previousValue, isCurrency, isReverse, unit = '' }) => {
+const ScoreCard = ({ title, value, previousValue, isCurrency, isReverse, unit = '', decimals = 0 }) => {
     const Icon = window.Icon;
     const hasPrev = previousValue !== undefined && previousValue !== null && !isNaN(previousValue);
     const diff = value - (previousValue || 0);
@@ -250,6 +248,7 @@ const ScoreCard = ({ title, value, previousValue, isCurrency, isReverse, unit = 
         if (v === undefined || v === null) return '-';
         if (isCurrency) return Math.round(v).toLocaleString('nb-NO') + ' kr';
         if (unit === '%') return v.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+        if (decimals > 0) return v.toLocaleString('nb-NO', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + unit;
         return Math.round(v).toLocaleString('nb-NO') + unit;
     };
 
@@ -344,6 +343,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
 
     // Aggregater
     const sum = (data, key) => data.reduce((acc, curr) => acc + (curr[key] || 0), 0);
+    const avg = (data, key) => data.length > 0 ? sum(data, key) / data.length : 0;
     
     const calcCtr = (data) => {
         const clicks = sum(data, 'linkClicks');
@@ -361,14 +361,20 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         spend: sum(currentData, 'spend'),
         clicks: sum(currentData, 'linkClicks'),
         cpc: calcCpc(currentData),
-        ctr: calcCtr(currentData)
+        ctr: calcCtr(currentData),
+        impressions: sum(currentData, 'impressions'),
+        reach: sum(currentData, 'reach'),
+        frequency: avg(currentData, 'frequency')
     };
 
     const prevTotals = {
         spend: sum(prevData, 'spend'),
         clicks: sum(prevData, 'linkClicks'),
         cpc: calcCpc(prevData),
-        ctr: calcCtr(prevData)
+        ctr: calcCtr(prevData),
+        impressions: sum(prevData, 'impressions'),
+        reach: sum(prevData, 'reach'),
+        frequency: avg(prevData, 'frequency')
     };
 
     // Handlers
@@ -432,11 +438,16 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
             </div>
 
             {/* 2. SCORECARDS */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <ScoreCard title="Totalt Forbruk" value={totals.spend} previousValue={prevTotals.spend} isCurrency={true} isReverse={true} />
                 <ScoreCard title="Link Clicks" value={totals.clicks} previousValue={prevTotals.clicks} />
                 <ScoreCard title="Snitt CPC (Link)" value={totals.cpc} previousValue={prevTotals.cpc} isCurrency={true} isReverse={true} />
                 <ScoreCard title="CTR (Click-Through)" value={totals.ctr} previousValue={prevTotals.ctr} unit="%" />
+                
+                {/* NYE KORT */}
+                <ScoreCard title="Impressions" value={totals.impressions} previousValue={prevTotals.impressions} />
+                <ScoreCard title="Reach" value={totals.reach} previousValue={prevTotals.reach} />
+                <ScoreCard title="Frequency" value={totals.frequency} previousValue={prevTotals.frequency} unit="" decimals={2} /> 
             </div>
 
             {/* 3. GRAFER */}
