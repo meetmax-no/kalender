@@ -1,4 +1,4 @@
-// --- KORREKT CSV PARSING (Håndterer komma i felt) ---
+// --- ROBUST HJELPEFUNKSJON FOR CSV PARSING ---
 window.parseMetaCSV = (csvText) => {
     // Regex som splitter på komma KUN hvis det ikke er inni anførselstegn
     const splitCSV = (str) => {
@@ -14,62 +14,26 @@ window.parseMetaCSV = (csvText) => {
     
     // Mapping basert NØYAKTIG på din fil
     const fieldMap = {
-        'Reporting starts': 'date',
-        'Rapportering starter': 'date',
-        
-        'Amount spent (NOK)': 'spend',
-        'Beløp brukt (NOK)': 'spend',
-        
-        'Impressions': 'impressions',
-        'Eksponeringer': 'impressions',
-        
-        'Reach': 'reach',
-        'Rekkevidde': 'reach',
-        
-        'Frequency': 'frequency',
-        'Frekvens': 'frequency',
-        
-        'CPM (cost per 1,000 impressions) (NOK)': 'cpm',
-        'CPM (kostnad per 1000 eksponeringer) (NOK)': 'cpm',
-        
-        'Link clicks': 'linkClicks',
-        'Klikk på lenke': 'linkClicks',
-        
-        'CPC (cost per link click) (NOK)': 'cpcLink',
-        'CPC (kostnad per klikk på lenke) (NOK)': 'cpcLink',
-        
-        'Clicks (all)': 'clicksAll',
-        'Klikk (alle)': 'clicksAll',
-        
-        'CTR (all)': 'ctrAll',
-        'CTR (alle)': 'ctrAll',
-        
-        'CPC (all) (NOK)': 'cpcAll',
-        'CPC (alle) (NOK)': 'cpcAll',
-        
-        'Landing page views': 'landingPageViews',
-        'Visninger av landingsside': 'landingPageViews',
-        
-        'Cost per landing page view (NOK)': 'costPerLandingPageView',
-        'Kostnad per visning av landingsside (NOK)': 'costPerLandingPageView'
+        'Reporting starts': 'date', 'Rapportering starter': 'date',
+        'Amount spent (NOK)': 'spend', 'Beløp brukt (NOK)': 'spend',
+        'Impressions': 'impressions', 'Eksponeringer': 'impressions',
+        'Reach': 'reach', 'Rekkevidde': 'reach',
+        'Frequency': 'frequency', 'Frekvens': 'frequency',
+        'CPM (cost per 1,000 impressions) (NOK)': 'cpm', 'CPM (kostnad per 1000 eksponeringer) (NOK)': 'cpm',
+        'Link clicks': 'linkClicks', 'Klikk på lenke': 'linkClicks',
+        'CPC (cost per link click) (NOK)': 'cpcLink', 'CPC (kostnad per klikk på lenke) (NOK)': 'cpcLink',
+        'Clicks (all)': 'clicksAll', 'Klikk (alle)': 'clicksAll',
+        'CTR (all)': 'ctrAll', 'CTR (alle)': 'ctrAll',
+        'CPC (all) (NOK)': 'cpcAll', 'CPC (alle) (NOK)': 'cpcAll',
+        'Landing page views': 'landingPageViews', 'Visninger av landingsside': 'landingPageViews',
+        'Cost per landing page view (NOK)': 'costPerLandingPageView', 'Kostnad per visning av landingsside (NOK)': 'costPerLandingPageView'
     };
 
     const result = [];
-    
-    // Finn indekser for kolonnene vi bryr oss om
     const indices = {};
-    headers.forEach((h, i) => {
-        if (fieldMap[h]) {
-            indices[fieldMap[h]] = i;
-        }
-    });
+    headers.forEach((h, i) => { if (fieldMap[h]) indices[fieldMap[h]] = i; });
 
     for (let i = 1; i < lines.length; i++) {
-        // Bruker samme smarte splitter på dataradene
-        // Merk: Regexen over er litt enkel, så vi bruker en mer robust metode for selve dataene
-        // siden dataene kan være tomme (,,)
-        
-        // Enklere manuell parsing for datarader for å håndtere tomme felt riktig:
         const row = [];
         let inQuote = false;
         let buffer = '';
@@ -78,7 +42,7 @@ window.parseMetaCSV = (csvText) => {
             else if (char === ',' && !inQuote) { row.push(buffer); buffer = ''; }
             else { buffer += char; }
         }
-        row.push(buffer); // Siste felt
+        row.push(buffer);
 
         const obj = { id: Date.now() + Math.random() };
         let hasData = false;
@@ -91,7 +55,6 @@ window.parseMetaCSV = (csvText) => {
                 if (key === 'date') {
                     obj[key] = val;
                 } else {
-                    // Håndter tall (305.21 eller 305,21)
                     if (val.includes(',') && !val.includes('.')) val = val.replace(',', '.');
                     obj[key] = parseFloat(val) || 0;
                 }
@@ -112,15 +75,16 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const { useState, useRef } = React;
     const csvInputRef = useRef(null);
 
-    // --- STATE FOR MANUELL REGISTRERING ---
+    // --- STATE ---
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isTableExpanded, setIsTableExpanded] = useState(false); // NY: Styrer om tabellen er utvidet
+
     const [form, setForm] = useState({
         date: new Date().toISOString().slice(0,10),
         reach: '', frequency: '', spend: '', impressions: '', cpm: '',
         linkClicks: '', cpcLink: '', clicksAll: '', ctrAll: '', cpcAll: '',
         landingPageViews: '', costPerLandingPageView: ''
     });
-
-    const [isFormOpen, setIsFormOpen] = useState(false);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -130,14 +94,10 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!form.date) return;
-
         const newData = { id: Date.now(), ...form };
         Object.keys(newData).forEach(key => {
-            if (key !== 'id' && key !== 'date') {
-                newData[key] = parseFloat(newData[key]) || 0;
-            }
+            if (key !== 'id' && key !== 'date') newData[key] = parseFloat(newData[key]) || 0;
         });
-
         onAddKpi(newData);
         setForm(prev => ({ ...prev, 
             reach: '', frequency: '', spend: '', impressions: '', cpm: '',
@@ -161,16 +121,17 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                 } else {
                     alert("Fant ingen gyldige data. Sjekk at filen er en standard Meta CSV eksport.");
                 }
-            } catch (err) {
-                console.error(err);
-                alert("Feil ved lesing av fil.");
-            }
+            } catch (err) { console.error(err); alert("Feil ved lesing av fil."); }
         };
         reader.readAsText(file);
         e.target.value = null;
     };
 
     const sortedData = [...(kpiData || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    // NY LOGIKK: Vis bare de 5 første hvis ikke "isTableExpanded" er sant
+    const visibleData = isTableExpanded ? sortedData : sortedData.slice(0, 5);
+
     const fmt = (num, decimals = 0) => num ? num.toLocaleString('nb-NO', { maximumFractionDigits: decimals }) : '-';
     const kr = (num) => num ? num.toLocaleString('nb-NO', { maximumFractionDigits: 2 }) + ' kr' : '-';
 
@@ -216,7 +177,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
             )}
 
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="max-h-[600px] overflow-auto custom-scrollbar">
+                <div className="max-h-[800px] overflow-auto custom-scrollbar">
                     {sortedData.length > 0 ? (
                         <table className="w-full text-xs text-left whitespace-nowrap">
                             <thead className="text-[10px] font-bold text-slate-500 uppercase bg-slate-100 sticky top-0 z-10">
@@ -237,7 +198,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {sortedData.map(row => (
+                                {visibleData.map(row => (
                                     <tr key={row.id} className="hover:bg-slate-50 group transition-colors">
                                         <td className="px-3 py-2 font-medium text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 shadow-[1px_0_5px_-2px_rgba(0,0,0,0.1)]">{row.date}</td>
                                         <td className="px-3 py-2 text-right font-bold text-slate-800 bg-yellow-50/50">{kr(row.spend)}</td>
@@ -256,6 +217,24 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                                         </td>
                                     </tr>
                                 ))}
+
+                                {/* NY FUNKSJONALITET: EKSPANDER-KNAPP */}
+                                {sortedData.length > 5 && (
+                                    <tr 
+                                        onClick={() => setIsTableExpanded(!isTableExpanded)} 
+                                        className="bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors border-t border-slate-200"
+                                    >
+                                        <td colSpan="13" className="py-3 text-center">
+                                            <div className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
+                                                {isTableExpanded ? (
+                                                    <>Skjul liste <Icon name="chevron-up" size={14}/></>
+                                                ) : (
+                                                    <>Vis eldre dager ({sortedData.length - 5} skjult) <Icon name="chevron-down" size={14}/></>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     ) : (
