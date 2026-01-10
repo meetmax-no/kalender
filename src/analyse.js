@@ -76,7 +76,8 @@ const CostEffectChart = ({ data }) => {
 
     return (
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
-            <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
+            {/* ENDRING HER: preserveAspectRatio="none" lar grafen strekkes i bredden */}
+            <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="none" className="w-full h-full overflow-visible">
                 <GridLines />
                 <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" />
                 <YAxis max={maxClicks} unit="" color="#6366f1" align="right" />
