@@ -1,4 +1,4 @@
-// --- HJELPERE FOR FORMATERING (Beholdt og utvidet) ---
+// --- HJELPERE FOR FORMATERING ---
 const fmtMoney = (val) => val !== undefined && val !== null && !isNaN(val) ? Math.round(val).toLocaleString('nb-NO') : '-';
 const fmtNum = (val) => val !== undefined && val !== null && !isNaN(val) ? Math.round(val).toLocaleString('nb-NO') : '-';
 const fmtDec = (val) => val !== undefined && val !== null && !isNaN(val) ? val.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-';
@@ -6,7 +6,6 @@ const fmtROAS = (val) => val !== undefined && val !== null && !isNaN(val) ? val.
 
 // --- TRIPPELSJEKKET CSV PARSER ---
 window.parseMetaCSV = (csvText) => {
-    // Robust funksjon for å splitte CSV-linjer nøyaktig, selv med komma i tekst
     const parseLine = (line) => {
         let row = [];
         let buffer = '';
@@ -23,12 +22,10 @@ window.parseMetaCSV = (csvText) => {
     const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
     if (lines.length < 2) return [];
     
-    // Bruker samme robuste logikk på headers som på rader
     const headers = parseLine(lines[0]);
-    
     const fieldMap = {
         'Reporting starts': 'date', 'Rapportering starter': 'date',
-        'Campaign name': 'campaignName',
+        'Campaign name': 'campaignName', // Samles opp, men vises ikke nå
         'Campaign delivery': 'delivery',
         'Amount spent (NOK)': 'spend', 'Beløp brukt (NOK)': 'spend',
         'Impressions': 'impressions', 'Eksponeringer': 'impressions',
@@ -38,9 +35,12 @@ window.parseMetaCSV = (csvText) => {
         'Link clicks': 'linkClicks', 'Klikk på lenke': 'linkClicks',
         'CPC (cost per link click) (NOK)': 'cpcLink',
         'CTR (link click-through rate)': 'ctrLink',
+        'Clicks (all)': 'clicksAll',
+        'CTR (all)': 'ctrAll',
         'Landing page views': 'landingPageViews',
         'Adds to cart': 'atc',
         'Adds to cart conversion value': 'atcValue',
+        'Checkouts initiated': 'checkouts',
         'Purchases': 'purchases',
         'Purchases conversion value': 'revenue',
         'Purchase ROAS (return on ad spend)': 'roas'
@@ -69,19 +69,15 @@ window.parseMetaCSV = (csvText) => {
             }
         });
 
-        // KRAV: Kun active kampanjer og gyldig dato
+        // KRAV: Kun active kampanjer
         if (hasData && obj.date && obj.delivery === 'active') {
-            // Kalkulerer CTR hvis den mangler, slik originalen gjorde
-            if (!obj.ctrLink && obj.linkClicks && obj.impressions) {
-                obj.ctrLink = (obj.linkClicks / obj.impressions) * 100;
-            }
             result.push(obj);
         }
     }
     return result;
 };
 
-// --- KOMPLETT TABELL-KOMPONENT (Ingen funksjonalitet slettet) ---
+// --- OPPDATERT TABELL (Alt på én linje, kampanjenavn skjult) ---
 window.AnalyseTable = ({ data, onDelete }) => {
     const Icon = window.Icon;
     const [isExpanded, setIsExpanded] = React.useState(false);
@@ -91,50 +87,53 @@ window.AnalyseTable = ({ data, onDelete }) => {
     return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-8">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h3 className="font-bold text-slate-700 text-sm italic">The Curated Exhibition (Aktive Kampanjer)</h3>
-                <span className="text-xs text-slate-500">{sortedData.length} dager</span>
+                <h3 className="font-bold text-slate-700 text-sm">Fullstendig Datavisning (Aktive kampanjer)</h3>
+                <span className="text-xs text-slate-500">{sortedData.length} aktive rader</span>
             </div>
             <div className="overflow-x-auto">
-                <table className="w-full text-[10px] text-left whitespace-nowrap">
+                <table className="w-full text-[9px] text-left whitespace-nowrap">
                     <thead className="font-bold text-slate-500 uppercase bg-white border-b">
                         <tr>
-                            <th className="px-2 py-3">Dato / Kampanje</th>
+                            <th className="px-2 py-3">Dato</th>
                             <th className="px-2 py-3 text-right">Spend</th>
-                            <th className="px-2 py-3 text-right">Impr. / Reach</th>
-                            <th className="px-2 py-3 text-right">CPM / CPC</th>
-                            <th className="px-2 py-3 text-right text-indigo-600">Klikk (CTR)</th>
-                            <th className="px-2 py-3 text-right">ATC (Verdi)</th>
-                            <th className="px-2 py-3 text-right">Kjøp</th>
-                            <th className="px-2 py-3 text-right">Omsetning</th>
-                            <th className="px-2 py-3 text-right font-bold text-indigo-600 border-l">ROAS</th>
+                            <th className="px-2 py-3 text-right">Impr.</th>
+                            <th className="px-2 py-3 text-right">Reach</th>
+                            <th className="px-2 py-3 text-right">Freq.</th>
+                            <th className="px-2 py-3 text-right">CPM</th>
+                            <th className="px-2 py-3 text-right">Klikk (L)</th>
+                            <th className="px-2 py-3 text-right">CTR (L)</th>
+                            <th className="px-2 py-3 text-right">Klikk (A)</th>
+                            <th className="px-2 py-3 text-right">CTR (A)</th>
+                            <th className="px-2 py-3 text-right">LPV</th>
+                            <th className="px-2 py-3 text-right">ATC</th>
+                            <th className="px-2 py-3 text-right">ATC Verdi</th>
+                            <th className="px-2 py-3 text-right">Salg</th>
+                            <th className="px-2 py-3 text-right font-bold text-slate-900">Inntekt</th>
+                            <th className="px-2 py-3 text-right font-bold text-indigo-600">ROAS</th>
                             <th className="px-2 py-3 text-center">Slett</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {visibleData.map(row => (
                             <tr key={row.id} className="hover:bg-slate-50 group transition-colors">
-                                <td className="px-2 py-2">
-                                    <div className="font-medium text-slate-700">{row.date}</div>
-                                    <div className="text-[9px] text-slate-400 truncate max-w-[120px]">{row.campaignName}</div>
-                                </td>
-                                <td className="px-2 py-2 text-right font-bold text-slate-800">{fmtMoney(row.spend)} kr</td>
-                                <td className="px-2 py-2 text-right text-slate-500">
-                                    {fmtNum(row.impressions)} <br/> <span className="text-[9px] opacity-70">{fmtNum(row.reach)}</span>
-                                </td>
-                                <td className="px-2 py-2 text-right text-slate-500">
-                                    {fmtMoney(row.cpm)} <br/> <span className="text-[9px] opacity-70">{fmtDec(row.cpcLink)} kr</span>
-                                </td>
-                                <td className="px-2 py-2 text-right text-indigo-600 font-medium">
-                                    {fmtNum(row.linkClicks)} <br/> <span className="text-[9px]">{fmtDec(row.ctrLink)}%</span>
-                                </td>
-                                <td className="px-2 py-2 text-right text-slate-600">
-                                    {row.atc || 0} <br/> <span className="text-[9px] opacity-70">{fmtMoney(row.atcValue)}</span>
-                                </td>
+                                <td className="px-2 py-2 text-slate-700 font-medium">{row.date}</td>
+                                <td className="px-2 py-2 text-right font-bold text-slate-800">{fmtMoney(row.spend)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtNum(row.impressions)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtNum(row.reach)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtDec(row.frequency)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtMoney(row.cpm)}</td>
+                                <td className="px-2 py-2 text-right text-indigo-600">{fmtNum(row.linkClicks)}</td>
+                                <td className="px-2 py-2 text-right text-indigo-600">{fmtDec(row.ctrLink)}%</td>
+                                <td className="px-2 py-2 text-right text-slate-500">{fmtNum(row.clicksAll)}</td>
+                                <td className="px-2 py-2 text-right text-slate-500">{fmtDec(row.ctrAll)}%</td>
+                                <td className="px-2 py-2 text-right font-medium text-slate-700">{fmtNum(row.landingPageViews)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{row.atc || 0}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtMoney(row.atcValue)}</td>
                                 <td className="px-2 py-2 text-right text-slate-600">{row.purchases || 0}</td>
-                                <td className="px-2 py-2 text-right font-bold text-slate-800">{fmtMoney(row.revenue)} kr</td>
-                                <td className="px-2 py-2 text-right font-bold text-indigo-600 border-l bg-indigo-50/30">{fmtROAS(row.roas)}x</td>
+                                <td className="px-2 py-2 text-right font-bold text-slate-900">{fmtMoney(row.revenue)}</td>
+                                <td className="px-2 py-2 text-right font-bold text-indigo-600">{fmtROAS(row.roas)}x</td>
                                 <td className="px-2 py-2 text-center">
-                                    <button onClick={() => onDelete(row.id)} className="text-slate-300 hover:text-red-500 p-1">
+                                    <button onClick={() => onDelete(row.id)} className="text-slate-300 hover:text-red-500 p-1 transition-colors">
                                         <Icon name="trash-2" size={14} />
                                     </button>
                                 </td>
@@ -143,6 +142,13 @@ window.AnalyseTable = ({ data, onDelete }) => {
                     </tbody>
                 </table>
             </div>
+            {sortedData.length > 5 && (
+                <div onClick={() => setIsExpanded(!isExpanded)} className="py-3 text-center bg-slate-50 hover:bg-slate-100 cursor-pointer border-t border-slate-200 transition-colors">
+                    <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500 uppercase">
+                        {isExpanded ? <>Skjul rader <Icon name="chevron-up" size={12}/></> : <>Se alle dager ({sortedData.length}) <Icon name="chevron-down" size={12}/></>}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
