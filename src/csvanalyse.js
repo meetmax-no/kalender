@@ -1,7 +1,7 @@
 // --- HJELPERE FOR FORMATERING ---
 const fmtMoney = (val) => val !== undefined && val !== null && !isNaN(val) ? Math.round(val).toLocaleString('nb-NO') : '-';
 const fmtNum = (val) => val !== undefined && val !== null && !isNaN(val) ? Math.round(val).toLocaleString('nb-NO') : '-';
-// OPPDATERT: Nå med 2 faste desimaler for FREQ og CTR
+// Oppdatert til 2 desimaler for å møte kravet om presisjon
 const fmtDec = (val) => val !== undefined && val !== null && !isNaN(val) ? val.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
 const fmtROAS = (val) => val !== undefined && val !== null && !isNaN(val) ? val.toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
 
@@ -23,9 +23,10 @@ window.parseMetaCSV = (csvText) => {
     const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
     if (lines.length < 2) return [];
     
-    const headers = parseLine(lines[0]);
-    
-    // MAPPING: Sikrer at vi treffer de nøyaktige kolonnenavnene fra din fil
+    const rawHeaders = parseLine(lines[0]);
+    // Fjerner usynlige tegn (BOM/Zwnj) som ofte finnes i Meta-eksporter
+    const headers = rawHeaders.map(h => h.replace(/[\u200B-\u200D\uFEFF]/g, '').trim());
+
     const fieldMap = {
         'Reporting starts': 'date', 'Rapportering starter': 'date',
         'Campaign name': 'campaignName',
@@ -60,21 +61,21 @@ window.parseMetaCSV = (csvText) => {
 
         Object.keys(indices).forEach(key => {
             const index = indices[key];
-            let val = row[index] || '';
-            if (val !== '') {
+            let val = row[index];
+            if (val !== undefined && val !== null && val !== '') {
                 if (['date', 'campaignName', 'delivery'].includes(key)) {
                     obj[key] = val;
                 } else {
-                    // Håndterer desimaltegn uavhengig av eksportformat
                     if (val.includes(',') && !val.includes('.')) val = val.replace(',', '.');
-                    const num = parseFloat(val);
-                    obj[key] = !isNaN(num) ? num : 0;
+                    obj[key] = parseFloat(val) || 0;
                 }
                 hasData = true;
+            } else if (!['date', 'campaignName', 'delivery'].includes(key)) {
+                obj[key] = 0;
             }
         });
 
-        // KRAV: Kun aktive kampanjer som har en dato
+        // Filtrerer kun på aktive kampanjer for å unngå tomme rader
         if (hasData && obj.date && obj.delivery === 'active') {
             result.push(obj);
         }
@@ -82,7 +83,7 @@ window.parseMetaCSV = (csvText) => {
     return result;
 };
 
-// --- TABELLVISNING ---
+// --- KOMPLETT TABELLVISNING ---
 window.AnalyseTable = ({ data, onDelete }) => {
     const Icon = window.Icon;
     const [isExpanded, setIsExpanded] = React.useState(false);
@@ -101,11 +102,18 @@ window.AnalyseTable = ({ data, onDelete }) => {
                         <tr>
                             <th className="px-2 py-3">Dato</th>
                             <th className="px-2 py-3 text-right">Spend</th>
+                            <th className="px-2 py-3 text-right">Impr.</th>
+                            <th className="px-2 py-3 text-right">Reach</th>
                             <th className="px-2 py-3 text-right">Freq.</th>
+                            <th className="px-2 py-3 text-right">CPM</th>
                             <th className="px-2 py-3 text-right">Klikk (L)</th>
                             <th className="px-2 py-3 text-right">CTR (L)</th>
-                            <th className="px-2 py-3 text-right font-bold text-slate-900 italic">Klikk (A)</th>
-                            <th className="px-2 py-3 text-right font-bold text-slate-900 italic">CTR (A)</th>
+                            <th className="px-2 py-3 text-right font-bold text-slate-900">Klikk (A)</th>
+                            <th className="px-2 py-3 text-right font-bold text-slate-900">CTR (A)</th>
+                            <th className="px-2 py-3 text-right">LPV</th>
+                            <th className="px-2 py-3 text-right">ATC</th>
+                            <th className="px-2 py-3 text-right">ATC Verdi</th>
+                            <th className="px-2 py-3 text-right">Salg</th>
                             <th className="px-2 py-3 text-right font-bold text-slate-900">Inntekt</th>
                             <th className="px-2 py-3 text-right font-bold text-indigo-600">ROAS</th>
                             <th className="px-2 py-3 text-center">Slett</th>
@@ -116,11 +124,21 @@ window.AnalyseTable = ({ data, onDelete }) => {
                             <tr key={row.id} className="hover:bg-slate-50 group transition-colors">
                                 <td className="px-2 py-2 text-slate-700 font-medium">{row.date}</td>
                                 <td className="px-2 py-2 text-right font-bold text-slate-800">{fmtMoney(row.spend)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtNum(row.impressions)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtNum(row.reach)}</td>
+                                {/* FREQ: 2 desimaler */}
                                 <td className="px-2 py-2 text-right text-slate-600">{fmtDec(row.frequency)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtMoney(row.cpm)}</td>
                                 <td className="px-2 py-2 text-right text-indigo-600">{fmtNum(row.linkClicks)}</td>
+                                {/* CTR (L): 2 desimaler */}
                                 <td className="px-2 py-2 text-right text-indigo-600">{fmtDec(row.ctrLink)}%</td>
+                                {/* Klikk (A) og CTR (A): Nå med data fra Clicks (all) og CTR (all) */}
                                 <td className="px-2 py-2 text-right text-slate-900 font-bold">{fmtNum(row.clicksAll)}</td>
                                 <td className="px-2 py-2 text-right text-slate-900 font-bold">{fmtDec(row.ctrAll)}%</td>
+                                <td className="px-2 py-2 text-right font-medium text-slate-700">{fmtNum(row.landingPageViews)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{row.atc || 0}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{fmtMoney(row.atcValue)}</td>
+                                <td className="px-2 py-2 text-right text-slate-600">{row.purchases || 0}</td>
                                 <td className="px-2 py-2 text-right font-bold text-slate-900">{fmtMoney(row.revenue)}</td>
                                 <td className="px-2 py-2 text-right font-bold text-indigo-600">{fmtROAS(row.roas)}x</td>
                                 <td className="px-2 py-2 text-center">
@@ -133,6 +151,17 @@ window.AnalyseTable = ({ data, onDelete }) => {
                     </tbody>
                 </table>
             </div>
+            {sortedData.length > 5 && (
+                <div onClick={() => setIsExpanded(!isExpanded)} className="py-3 text-center bg-slate-50 hover:bg-slate-100 cursor-pointer border-t border-slate-200 transition-colors">
+                    <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500 uppercase">
+                        {isExpanded ? (
+                            <>Skjul rader <Icon name="chevron-up" size={12}/></>
+                        ) : (
+                            <>Se alle dager ({sortedData.length}) <Icon name="chevron-down" size={12}/></>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
