@@ -471,7 +471,8 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const prevTotals = calculateTotals(prevData);
 
     // KPI Config: Henter fra config.js uten hardkoding
-    const kpiOrder = window.MEETMAX_CONFIG ? window.MEETMAX_CONFIG.KPI_CARDS : [];
+    // Fallback hvis config ikke er lastet, men prioriterer config.js
+    const kpiOrder = window.MEETMAX_CONFIG && window.MEETMAX_CONFIG.KPI_CARDS ? window.MEETMAX_CONFIG.KPI_CARDS : [];
 
     // Handlers
     const [form, setForm] = useState({ 
@@ -543,7 +544,8 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                             >
                                 <Icon name="layers" size={14} />
                                 {selectedCampaigns.length === 0 ? 'Alle Kampanjer' : `${selectedCampaigns.length} valgt`}
-                                <Icon name="chevron-down" size={12} className={`transition-transform ${isCampaignMenuOpen ? 'rotate-180' : ''}`} />
+                                {/* FIX: Ensure className is never empty string at end */}
+                                <Icon name="chevron-down" size={12} className={`transition-transform ${isCampaignMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
                             </button>
 
                             {isCampaignMenuOpen && (
