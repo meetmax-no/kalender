@@ -313,6 +313,9 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [filterType, setFilterType] = useState('last30'); 
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
+    // NY STATE: Kampanjer
+    const [selectedCampaigns, setSelectedCampaigns] = useState([]);
+    const [isCampaignMenuOpen, setIsCampaignMenuOpen] = useState(false);
 
     // Initialiser datoer
     useEffect(() => {
@@ -353,10 +356,31 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         });
     }, [filterType]);
 
-    // Filtrering
+    // Hent unike kampanjenavn for filterlisten
+    const allCampaigns = React.useMemo(() => {
+        if (!kpiData) return [];
+        const names = kpiData.map(d => d.campaignName).filter(Boolean); // Fjern null/undefined
+        return [...new Set(names)].sort();
+    }, [kpiData]);
+
+    const toggleCampaign = (name) => {
+        if (selectedCampaigns.includes(name)) {
+            setSelectedCampaigns(selectedCampaigns.filter(c => c !== name));
+        } else {
+            setSelectedCampaigns([...selectedCampaigns, name]);
+        }
+    };
+
+    // Filtrering (Dato + Kampanje)
     const getFilteredData = (rangeStart, rangeEnd) => {
         if (!kpiData) return [];
-        return kpiData.filter(d => d.date >= rangeStart && d.date <= rangeEnd);
+        // 1. Filtrer på dato
+        let filtered = kpiData.filter(d => d.date >= rangeStart && d.date <= rangeEnd);
+        // 2. Filtrer på kampanje (hvis valgt)
+        if (selectedCampaigns.length > 0) {
+            filtered = filtered.filter(d => selectedCampaigns.includes(d.campaignName));
+        }
+        return filtered;
     };
 
     // Beregn forrige periode
@@ -489,6 +513,8 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                         <Icon name="bar-chart-2" size={24} className="text-indigo-600"/> 
                         Meta Analyse
                     </h2>
+                    
+                    {/* DATO VELGER */}
                     <div className="flex bg-slate-100 p-1 rounded-lg">
                         <select className="bg-transparent text-sm font-bold text-slate-700 outline-none px-2 py-1 cursor-pointer" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                             <option value="today">I dag</option>
@@ -507,7 +533,48 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                             <input type="date" className="border rounded px-2 py-1 bg-white" value={dateRange.end} onChange={(e) => { setDateRange({...dateRange, end: e.target.value}); setFilterType('custom'); }} />
                         </div>
                     )}
+
+                    {/* NY KAMPANJE VELGER (MULTI-SELECT) */}
+                    {allCampaigns.length > 0 && (
+                        <div className="relative ml-2">
+                            <button 
+                                onClick={() => setIsCampaignMenuOpen(!isCampaignMenuOpen)}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors border ${selectedCampaigns.length > 0 ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                            >
+                                <Icon name="layers" size={14} />
+                                {selectedCampaigns.length === 0 ? 'Alle Kampanjer' : `${selectedCampaigns.length} valgt`}
+                                <Icon name="chevron-down" size={12} className={`transition-transform ${isCampaignMenuOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isCampaignMenuOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setIsCampaignMenuOpen(false)}></div>
+                                    <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto p-2 animate-in fade-in zoom-in-95 duration-200">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-2 px-2">Velg kampanjer</div>
+                                        {allCampaigns.map(c => (
+                                            <div 
+                                                key={c} 
+                                                onClick={() => toggleCampaign(c)}
+                                                className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer text-xs font-medium transition-colors ${selectedCampaigns.includes(c) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-700'}`}
+                                            >
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${selectedCampaigns.includes(c) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}>
+                                                    {selectedCampaigns.includes(c) && <Icon name="check" size={10} className="text-white" />}
+                                                </div>
+                                                <span className="truncate">{c}</span>
+                                            </div>
+                                        ))}
+                                        {selectedCampaigns.length > 0 && (
+                                            <button onClick={() => { setSelectedCampaigns([]); setIsCampaignMenuOpen(false); }} className="w-full mt-2 text-xs text-center text-slate-400 hover:text-slate-600 py-1 border-t">
+                                                Nullstill filter
+                                            </button>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
+
                 <div className="flex gap-2 w-full xl:w-auto">
                     <label className="flex-1 xl:flex-none justify-center bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors">
                         <Icon name="file-spreadsheet" size={14} /> CSV Import
