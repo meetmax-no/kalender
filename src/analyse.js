@@ -9,7 +9,6 @@ const formatDateShort = (dateStr) => {
 };
 
 // --- KONFIGURASJON FOR GRAFER ---
-// Standard oppsett for de små grafene (disse rører vi ikke)
 const G = {
     w: 300, 
     h: 150, 
@@ -46,7 +45,6 @@ const YAxis = ({ max, unit = '', color = '#94a3b8', align = 'left', width, padL,
     const pL = padL || G.padL;
     const pR = padR || G.padR;
     const mid = max / 2;
-    // Teksten plasseres litt utenfor padding-linjen
     const xPos = align === 'left' ? pL - 8 : w - pR + 8;
     const anchor = align === 'left' ? 'end' : 'start';
     
@@ -83,16 +81,13 @@ const XAxis = ({ data, width, padL, padR }) => {
     );
 };
 
-// Graf 1: ROI (Nå med SIKKERHETSSONE)
+// Graf 1: ROI
 const CostEffectChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
-    
     const chartW = 800; 
-    
-    // VIKTIG: Her er magien
-    const axisPad = 50;   // Hvor teksten (Y-aksen) står
-    const safetyGap = 40; // Ekstra luft mellom tekst og søyler
-    const graphPad = axisPad + safetyGap; // Her starter faktisk grafen (50 + 40 = 90)
+    const axisPad = 50;   
+    const safetyGap = 40; 
+    const graphPad = axisPad + safetyGap;
 
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
     const maxSpend = Math.max(...sorted.map(d => d.spend)) || 100;
@@ -100,7 +95,6 @@ const CostEffectChart = ({ data }) => {
     const count = sorted.length;
     const [hover, setHover] = React.useState(null);
 
-    // X-kalkulator som bruker den nye, inntrukne 'graphPad'
     const getX = (i, total) => {
         if (total <= 1) return chartW / 2;
         const usableW = chartW - graphPad - graphPad;
@@ -113,9 +107,7 @@ const CostEffectChart = ({ data }) => {
     return (
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
             <svg viewBox={`0 0 ${chartW} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
-                {/* Gridlines bruker graphPad slik at linjene følger grafens bredde */}
                 <GridLines width={chartW} padL={graphPad} padR={graphPad} />
-
                 {sorted.map((d, i) => {
                     const barH = (d.spend / maxSpend) * G.graphH();
                     const x = getX(i, count);
@@ -125,30 +117,22 @@ const CostEffectChart = ({ data }) => {
                               onMouseEnter={() => setHover(i)} className="transition-all duration-200" />
                     );
                 })}
-
                 {count > 1 ? (
                     <polyline fill="none" stroke="#6366f1" strokeWidth="1.5" points={points} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
                 ) : (
                     <line x1={getX(0, count) - 20} y1={G.y(sorted[0].linkClicks, maxClicks)} x2={getX(0, count) + 20} y2={G.y(sorted[0].linkClicks, maxClicks)} stroke="#6366f1" strokeWidth="1.5" />
                 )}
-
                 {sorted.map((d, i) => (
                     <circle key={i} cx={getX(i, count)} cy={G.y(d.linkClicks, maxClicks)} r={hover===i?3:1.5} fill="white" stroke="#6366f1" strokeWidth="1.5" className="transition-all" />
                 ))}
-
-                {/* Y-AKSER: Bruker 'axisPad' (50) for å stå langt ute på kanten */}
                 <YAxis max={maxSpend} unit=" kr" color="#a5b4fc" align="left" width={chartW} padL={axisPad} padR={axisPad} />
                 <YAxis max={maxClicks} unit="" color="#6366f1" align="right" width={chartW} padL={axisPad} padR={axisPad} />
-                
-                {/* X-AKSE: Bruker 'graphPad' (90) for å matche søylene */}
                 <XAxis data={sorted} width={chartW} padL={graphPad} padR={graphPad} />
-
                 {sorted.map((d, i) => {
                     const zoneW = (chartW - graphPad - graphPad) / count;
                     return <rect key={i} x={getX(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
                 })}
             </svg>
-
             {hover !== null && sorted[hover] && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-2 rounded-lg shadow-xl text-xs pointer-events-none z-20 whitespace-nowrap mt-2">
                     <div className="font-bold text-slate-300 border-b border-slate-700 mb-1 pb-1 text-[10px] uppercase">{sorted[hover].date}</div>
@@ -164,7 +148,7 @@ const CostEffectChart = ({ data }) => {
     );
 };
 
-// Graf 2: Pris (URØRT: Bruker standard G padding)
+// Graf 2: Pris
 const PriceTrendChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -185,7 +169,6 @@ const PriceTrendChart = ({ data }) => {
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
             <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
-                
                 {count > 1 ? (
                     <>
                         <polyline fill="none" stroke="#f59e0b" strokeWidth="1.5" points={pointsCpm} strokeDasharray="4" className="opacity-70" />
@@ -197,11 +180,9 @@ const PriceTrendChart = ({ data }) => {
                          <circle cx="150" cy={G.y(processed[0].cpc, maxCpc)} r="3" fill="#10b981" />
                     </>
                 )}
-                
                 <YAxis max={maxCpc} unit=" kr" color="#10b981" align="left" />
                 <YAxis max={maxCpm} unit=" kr" color="#f59e0b" align="right" />
                 <XAxis data={sorted} />
-
                 {processed.map((d, i) => {
                     const zoneW = G.graphW() / count;
                     return <rect key={i} x={G.x(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
@@ -222,7 +203,7 @@ const PriceTrendChart = ({ data }) => {
     );
 };
 
-// Graf 3: Metning (URØRT: Bruker standard G padding)
+// Graf 3: Metning
 const SaturationChart = ({ data }) => {
     if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-slate-400 text-xs">Ingen data</div>;
     const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -240,7 +221,6 @@ const SaturationChart = ({ data }) => {
         <div className="relative h-64 w-full" onMouseLeave={() => setHover(null)}>
             <svg viewBox={`0 0 ${G.w} ${G.h}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full overflow-visible">
                 <GridLines />
-
                 {count > 1 ? (
                     <>
                         <path d={buildPath('impressions')} fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" strokeWidth="1.5" />
@@ -252,10 +232,8 @@ const SaturationChart = ({ data }) => {
                         <rect x="155" y={G.y(sorted[0].reach, maxVal)} width="10" height={G.h - G.padB - G.y(sorted[0].reach, maxVal)} fill="rgba(168, 85, 247, 0.5)" />
                      </>
                 )}
-                
                 <YAxis max={maxVal} unit="" color="#64748b" align="left" />
                 <XAxis data={sorted} />
-
                 {sorted.map((d, i) => {
                     const zoneW = G.graphW() / count;
                     return <rect key={i} x={G.x(i, count) - zoneW/2} y={G.padT} width={zoneW} height={G.graphH()} fill="transparent" onMouseEnter={() => setHover(i)} />;
@@ -342,7 +320,6 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         let start = new Date();
         let end = new Date();
 
-        // Nullstill tidspunkter for nøyaktig datosammenligning
         today.setHours(0,0,0,0);
         start.setHours(0,0,0,0);
         end.setHours(0,0,0,0);
@@ -350,7 +327,6 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         if (filterType === 'today') {
             // start = end = today
         } else if (filterType === 'yesterday') {
-            // NY LOGIKK: I går
             start.setDate(today.getDate() - 1);
             end.setDate(today.getDate() - 1);
         } else if (filterType === 'last7') {
@@ -366,7 +342,6 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
             return; 
         }
 
-        // Juster for tidssoner (simple ISO fix)
         const toLocalISO = (d) => {
             const z = new Date(d.getTime() - (d.getTimezoneOffset() * 60000));
             return z.toISOString().split('T')[0];
@@ -418,40 +393,73 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const avg = (data, key) => data.length > 0 ? sum(data, key) / data.length : 0;
     
     // Kalkulatorer
-    const calcCtr = (data) => {
-        const clicks = sum(data, 'linkClicks');
+    const calcCtr = (data, clickKey = 'linkClicks') => {
+        const clicks = sum(data, clickKey);
         const impr = sum(data, 'impressions');
         return impr > 0 ? (clicks / impr) * 100 : 0;
     };
     
-    const calcCpc = (data) => {
+    const calcCpc = (data, clickKey = 'linkClicks') => {
         const spend = sum(data, 'spend');
-        const clicks = sum(data, 'linkClicks');
+        const clicks = sum(data, clickKey);
         return clicks > 0 ? spend / clicks : 0;
     };
 
-    const totals = {
-        spend: sum(currentData, 'spend'),
-        clicks: sum(currentData, 'linkClicks'),
-        cpc: calcCpc(currentData),
-        ctr: calcCtr(currentData),
-        impressions: sum(currentData, 'impressions'),
-        reach: sum(currentData, 'reach'),
-        frequency: avg(currentData, 'frequency')
+    const calcRoas = (data) => {
+        const revenue = sum(data, 'revenue');
+        const spend = sum(data, 'spend');
+        return spend > 0 ? revenue / spend : 0;
     };
 
-    const prevTotals = {
-        spend: sum(prevData, 'spend'),
-        clicks: sum(prevData, 'linkClicks'),
-        cpc: calcCpc(prevData),
-        ctr: calcCtr(prevData),
-        impressions: sum(prevData, 'impressions'),
-        reach: sum(prevData, 'reach'),
-        frequency: avg(prevData, 'frequency')
+    const calcCpa = (data) => {
+        const spend = sum(data, 'spend');
+        const purchases = sum(data, 'purchases');
+        return purchases > 0 ? spend / purchases : 0;
     };
+
+    // Felles funksjon for å kalkulere alle totals
+    const calculateTotals = (data) => ({
+        spend: sum(data, 'spend'),
+        impressions: sum(data, 'impressions'),
+        reach: sum(data, 'reach'),
+        frequency: avg(data, 'frequency'),
+        
+        // Klikk & Trafikk
+        linkClicks: sum(data, 'linkClicks'),
+        cpcLink: calcCpc(data, 'linkClicks'),
+        ctrLink: calcCtr(data, 'linkClicks'),
+        clicksAll: sum(data, 'clicksAll'),
+        cpcAll: calcCpc(data, 'clicksAll'),
+        ctrAll: calcCtr(data, 'clicksAll'),
+        landingPageViews: sum(data, 'landingPageViews'),
+        cpm: sum(data, 'impressions') > 0 ? (sum(data, 'spend') / sum(data, 'impressions')) * 1000 : 0,
+
+        // E-handel / Konvertering
+        atc: sum(data, 'atc'),
+        atcValue: sum(data, 'atcValue'),
+        purchases: sum(data, 'purchases'),
+        revenue: sum(data, 'revenue'),
+        roas: calcRoas(data),
+        cpa: calcCpa(data)
+    });
+
+    const totals = calculateTotals(currentData);
+    const prevTotals = calculateTotals(prevData);
+
+    // KPI Config fra config.js (Fallback hvis den mangler)
+    const kpiOrder = window.MEETMAX_CONFIG?.KPI_CARDS || [];
 
     // Handlers
-    const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), reach:'', frequency:'', spend:'', impressions:'', cpm:'', linkClicks:'', cpcLink:'', clicksAll:'', ctrAll:'', cpcAll:'', landingPageViews:'', costPerLandingPageView:'' });
+    const [form, setForm] = useState({ 
+        date: new Date().toISOString().slice(0,10), 
+        reach:'', frequency:'', spend:'', impressions:'', cpm:'',
+        linkClicks:'', cpcLink:'', ctrLink:'',
+        clicksAll:'', ctrAll:'', cpcAll:'', 
+        landingPageViews:'', 
+        atc:'', atcValue:'', 
+        purchases:'', revenue:'', roas:''
+    });
+
     const handleFormChange = (e) => setForm({...form, [e.target.name]: e.target.value});
     const handleFormSubmit = (e) => {
         e.preventDefault();
@@ -484,7 +492,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                     <div className="flex bg-slate-100 p-1 rounded-lg">
                         <select className="bg-transparent text-sm font-bold text-slate-700 outline-none px-2 py-1 cursor-pointer" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                             <option value="today">I dag</option>
-                            <option value="yesterday">I går</option> {/* NYT VALG: I GÅR */}
+                            <option value="yesterday">I går</option>
                             <option value="last7">Siste 7 dager</option>
                             <option value="last30">Siste 30 dager</option>
                             <option value="thisMonth">Denne måneden</option>
@@ -511,15 +519,21 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                 </div>
             </div>
 
-            {/* 2. SCORECARDS */}
+            {/* 2. SCORECARDS - DYNAMISK FRA CONFIG */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <ScoreCard title="Totalt Forbruk" value={totals.spend} previousValue={prevTotals.spend} isCurrency={true} isReverse={true} />
-                <ScoreCard title="Reach" value={totals.reach} previousValue={prevTotals.reach} />
-                <ScoreCard title="Impressions" value={totals.impressions} previousValue={prevTotals.impressions} />
-                <ScoreCard title="Frequency" value={totals.frequency} previousValue={prevTotals.frequency} unit="" decimals={2} isReverse={true} /> 
-                <ScoreCard title="Link Clicks" value={totals.clicks} previousValue={prevTotals.clicks} />
-                <ScoreCard title="CTR (Click-Through)" value={totals.ctr} previousValue={prevTotals.ctr} unit="%" decimals={2} />
-                <ScoreCard title="Snitt CPC (Link)" value={totals.cpc} previousValue={prevTotals.cpc} unit=" kr" decimals={2} isReverse={true} />
+                {kpiOrder.map(card => (
+                    <ScoreCard 
+                        key={card.key}
+                        title={card.title} 
+                        value={totals[card.key]} 
+                        previousValue={prevTotals[card.key]} 
+                        isCurrency={card.isCurrency} 
+                        isReverse={card.isReverse} 
+                        unit={card.unit}
+                        decimals={card.decimals}
+                    />
+                ))}
+                {kpiOrder.length === 0 && <div className="col-span-4 text-center text-slate-400 text-sm">Ingen KPI-kort definert i config.js</div>}
             </div>
 
             {/* 3. GRAFER */}
@@ -555,24 +569,34 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                      <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 border-b pb-2">Ny registrering</h3>
                     <form onSubmit={handleFormSubmit} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                         <div className="col-span-1 md:col-span-2 lg:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Dato</label><input type="date" name="date" value={form.date} onChange={handleFormChange} className="w-full border p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Reach</label><input type="number" name="reach" value={form.reach} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Impressions</label><input type="number" name="impressions" value={form.impressions} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
+                        
+                        {/* Grunnleggende */}
                         <div><label className="text-[10px] font-bold text-slate-400 uppercase">Spend (NOK)</label><input type="number" step="0.01" name="spend" value={form.spend} onChange={handleFormChange} className="w-full border p-2 rounded bg-yellow-50" placeholder="kr" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Impressions</label><input type="number" name="impressions" value={form.impressions} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Reach</label><input type="number" name="reach" value={form.reach} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
                         <div><label className="text-[10px] font-bold text-slate-400 uppercase">Frequency</label><input type="number" step="0.01" name="frequency" value={form.frequency} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="1.0" /></div>
+                        
+                        {/* Trafikk */}
                         <div><label className="text-[10px] font-bold text-slate-400 uppercase">Link Clicks</label><input type="number" name="linkClicks" value={form.linkClicks} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPC (Link)</label><input type="number" step="0.01" name="cpcLink" value={form.cpcLink} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPM</label><input type="number" step="0.01" name="cpm" value={form.cpm} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
                         <div><label className="text-[10px] font-bold text-slate-400 uppercase">Clicks (All)</label><input type="number" name="clicksAll" value={form.clicksAll} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CTR (All)</label><input type="number" step="0.01" name="ctrAll" value={form.ctrAll} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="%" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPC (All)</label><input type="number" step="0.01" name="cpcAll" value={form.cpcAll} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Landing Views</label><input type="number" name="landingPageViews" value={form.landingPageViews} onChange={handleFormChange} className="w-full border p-2 rounded bg-green-50" placeholder="0" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Cost / Landing</label><input type="number" step="0.01" name="costPerLandingPageView" value={form.costPerLandingPageView} onChange={handleFormChange} className="w-full border p-2 rounded bg-green-50" placeholder="kr" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Landing Views</label><input type="number" name="landingPageViews" value={form.landingPageViews} onChange={handleFormChange} className="w-full border p-2 rounded bg-blue-50" placeholder="0" /></div>
+                        
+                        {/* Konvertering */}
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Add to Cart</label><input type="number" name="atc" value={form.atc} onChange={handleFormChange} className="w-full border p-2 rounded bg-green-50" placeholder="0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">ATC Verdi</label><input type="number" step="0.01" name="atcValue" value={form.atcValue} onChange={handleFormChange} className="w-full border p-2 rounded bg-green-50" placeholder="kr" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Salg (Antall)</label><input type="number" name="purchases" value={form.purchases} onChange={handleFormChange} className="w-full border p-2 rounded bg-green-100" placeholder="0" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">Inntekt (Revenue)</label><input type="number" step="0.01" name="revenue" value={form.revenue} onChange={handleFormChange} className="w-full border p-2 rounded bg-green-100 font-bold" placeholder="kr" /></div>
+                        
+                        {/* Priser */}
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPM</label><input type="number" step="0.01" name="cpm" value={form.cpm} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase">CPC (Link)</label><input type="number" step="0.01" name="cpcLink" value={form.cpcLink} onChange={handleFormChange} className="w-full border p-2 rounded" placeholder="kr" /></div>
+
                         <div className="col-span-1 md:col-span-2 lg:col-span-5 flex justify-end mt-2"><button type="submit" className="bg-indigo-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-indigo-700">Lagre</button></div>
                     </form>
                 </div>
             )}
 
-            {/* 5. TABELL COMPONENT (Ligger i csvanalyse.js) */}
+            {/* 5. TABELL COMPONENT */}
             <window.AnalyseTable data={kpiData} onDelete={onDeleteKpi} />
         </div>
     );
