@@ -358,7 +358,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
 
     // Hent unike kampanjenavn for filterlisten
     const allCampaigns = React.useMemo(() => {
-        if (!kpiData) return [];
+        if (!kpiData || !Array.isArray(kpiData)) return [];
         const names = kpiData.map(d => d.campaignName).filter(Boolean); // Fjern null/undefined
         return [...new Set(names)].sort();
     }, [kpiData]);
@@ -470,8 +470,8 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const totals = calculateTotals(currentData);
     const prevTotals = calculateTotals(prevData);
 
-    // KPI Config fra config.js (Fallback hvis den mangler)
-    const kpiOrder = window.MEETMAX_CONFIG?.KPI_CARDS || [];
+    // KPI Config: Henter fra config.js uten hardkoding
+    const kpiOrder = window.MEETMAX_CONFIG ? window.MEETMAX_CONFIG.KPI_CARDS : [];
 
     // Handlers
     const [form, setForm] = useState({ 
