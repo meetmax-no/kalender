@@ -28,7 +28,7 @@ window.MEETMAX_CONFIG = {
         // 3. KLIKK & TRAFIKK (Link)
         { key: 'linkClicks', title: 'Link Clicks' },
         { key: 'ctrLink', title: 'CTR (Link)', unit: '%', decimals: 2 },
-        { key: 'cpcLink', title: 'CPC (Link)', isCurrency: true, isReverse: true },
+        { key: 'cpcLink', title: 'CPC (Link)', unit: ' kr', decimals: 2, isReverse: true },
         { key: 'frequency', title: 'Frekvens', decimals: 2, isReverse: true },
 
         // 4. SEKUNDÆRE TALL (Engasjement)
