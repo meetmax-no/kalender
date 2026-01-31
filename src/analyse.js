@@ -342,8 +342,17 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         let start = new Date();
         let end = new Date();
 
+        // Nullstill tidspunkter for nøyaktig datosammenligning
+        today.setHours(0,0,0,0);
+        start.setHours(0,0,0,0);
+        end.setHours(0,0,0,0);
+
         if (filterType === 'today') {
             // start = end = today
+        } else if (filterType === 'yesterday') {
+            // NY LOGIKK: I går
+            start.setDate(today.getDate() - 1);
+            end.setDate(today.getDate() - 1);
         } else if (filterType === 'last7') {
             start.setDate(today.getDate() - 6);
         } else if (filterType === 'last30') {
@@ -357,9 +366,15 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
             return; 
         }
 
+        // Juster for tidssoner (simple ISO fix)
+        const toLocalISO = (d) => {
+            const z = new Date(d.getTime() - (d.getTimezoneOffset() * 60000));
+            return z.toISOString().split('T')[0];
+        };
+
         setDateRange({ 
-            start: start.toISOString().split('T')[0], 
-            end: end.toISOString().split('T')[0] 
+            start: toLocalISO(start), 
+            end: toLocalISO(end) 
         });
     }, [filterType]);
 
@@ -383,9 +398,14 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
         const prevStart = new Date(prevEnd);
         prevStart.setDate(prevEnd.getDate() - diffDays + 1);
 
+        const toLocalISO = (d) => {
+            const z = new Date(d.getTime() - (d.getTimezoneOffset() * 60000));
+            return z.toISOString().split('T')[0];
+        };
+
         return {
-            start: prevStart.toISOString().split('T')[0],
-            end: prevEnd.toISOString().split('T')[0]
+            start: toLocalISO(prevStart),
+            end: toLocalISO(prevEnd)
         };
     };
 
@@ -397,6 +417,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
     const sum = (data, key) => data.reduce((acc, curr) => acc + (curr[key] || 0), 0);
     const avg = (data, key) => data.length > 0 ? sum(data, key) / data.length : 0;
     
+    // Kalkulatorer
     const calcCtr = (data) => {
         const clicks = sum(data, 'linkClicks');
         const impr = sum(data, 'impressions');
@@ -463,6 +484,7 @@ window.AnalyseDashboard = ({ kpiData, onAddKpi, onDeleteKpi }) => {
                     <div className="flex bg-slate-100 p-1 rounded-lg">
                         <select className="bg-transparent text-sm font-bold text-slate-700 outline-none px-2 py-1 cursor-pointer" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                             <option value="today">I dag</option>
+                            <option value="yesterday">I går</option> {/* NYT VALG: I GÅR */}
                             <option value="last7">Siste 7 dager</option>
                             <option value="last30">Siste 30 dager</option>
                             <option value="thisMonth">Denne måneden</option>
