@@ -20,14 +20,14 @@ window.MEETMAX_CONFIG = {
         { key: 'ctrAll', title: 'CTR (Alle)', unit: '%', decimals: 2 },
 
         { key: 'spend', title: 'Totalt Forbruk', isCurrency: true, isReverse: true },
-        { key: 'cpcLink', title: 'CPC (Link)', unit: ' kr', decimals: 2, isReverse: true },
         { key: 'frequency', title: 'Frekvens', decimals: 2, isReverse: true },
+        { key: 'purchases', title: 'Antall Salg' },
         { key: 'revenue', title: 'Inntekt (Salg)', isCurrency: true },
         
         { key: 'linkClicks', title: 'Link Clicks' },
-        { key: 'ctrLink', title: 'CTR (Link)', unit: '%', decimals: 2 },
         { key: 'landingPageViews', title: 'Landing Page Views' },
-        { key: 'purchases', title: 'Antall Salg' },
+        { key: 'ctrLink', title: 'CTR (Link)', unit: '%', decimals: 2 },
+        { key: 'cpcLink', title: 'CPC (Link)', unit: ' kr', decimals: 2, isReverse: true },
         
         { key: 'atc', title: 'Add to Cart (Antall)' },
         { key: 'atcValue', title: 'ATC Verdi', isCurrency: true },  
