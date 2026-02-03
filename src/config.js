@@ -14,28 +14,25 @@ window.MEETMAX_CONFIG = {
     // KPI-KORT: Nå 16 stk (Perfekt 4x4 grid)
     KPI_CARDS: [
         // 1. RESULTAT & BUNNLINJE (Det viktigste først)
-        { key: 'revenue', title: 'Inntekt (Salg)', isCurrency: true },
-        { key: 'roas', title: 'ROAS', unit: 'x', decimals: 2 },
-        { key: 'purchases', title: 'Antall Salg' }, // <- NÅ PÅ PLASS!
-        { key: 'cpa', title: 'Cost Per Purchase', isCurrency: true, isReverse: true },
-        
-        // 2. KJØPSINTENSJON (Trakt)
-        { key: 'landingPageViews', title: 'Landing Page Views' },
-        { key: 'atc', title: 'Add to Cart (Antall)' },
-        { key: 'atcValue', title: 'ATC Verdi', isCurrency: true },
-        { key: 'spend', title: 'Totalt Forbruk', isCurrency: true, isReverse: true },
-
-        // 3. KLIKK & TRAFIKK (Link)
-        { key: 'linkClicks', title: 'Link Clicks' },
-        { key: 'ctrLink', title: 'CTR (Link)', unit: '%', decimals: 2 },
-        { key: 'cpcLink', title: 'CPC (Link)', unit: ' kr', decimals: 2, isReverse: true },
-        { key: 'frequency', title: 'Frekvens', decimals: 2, isReverse: true },
-
-        // 4. SEKUNDÆRE TALL (Engasjement)
+        { key: 'reach', title: 'Reach' },
+        { key: 'impressions', title: 'Impressions' },
         { key: 'clicksAll', title: 'Klikk (Alle)' },
         { key: 'ctrAll', title: 'CTR (Alle)', unit: '%', decimals: 2 },
-        { key: 'reach', title: 'Reach' },
-        { key: 'impressions', title: 'Impressions' }
+
+        { key: 'spend', title: 'Totalt Forbruk', isCurrency: true, isReverse: true },
+        { key: 'cpcLink', title: 'CPC (Link)', unit: ' kr', decimals: 2, isReverse: true },
+        { key: 'frequency', title: 'Frekvens', decimals: 2, isReverse: true },
+        { key: 'revenue', title: 'Inntekt (Salg)', isCurrency: true },
+        
+        { key: 'linkClicks', title: 'Link Clicks' },
+        { key: 'ctrLink', title: 'CTR (Link)', unit: '%', decimals: 2 },
+        { key: 'landingPageViews', title: 'Landing Page Views' },
+        { key: 'purchases', title: 'Antall Salg' },
+        
+        { key: 'atc', title: 'Add to Cart (Antall)' },
+        { key: 'atcValue', title: 'ATC Verdi', isCurrency: true },  
+        { key: 'roas', title: 'ROAS', unit: 'x', decimals: 2 },
+        { key: 'cpa', title: 'Cost Per Purchase', isCurrency: true, isReverse: true }
     ]
 };
 
