@@ -581,29 +581,49 @@
                     {activeTab === 'calendar' && (
                         <div className="animate-[fade-in_0.2s]">
                             {/* --- TOPP-SEKSJON MED FREMDRIFT --- */}
-                            <div className="flex justify-between items-end mb-4">
+                           <div className="flex justify-between items-end mb-4">
                                 <div className="w-full max-w-xs">
-                                    <span className="text-xs font-bold text-slate-400 uppercase">Månedens Fremdrift</span>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs font-bold text-slate-400 uppercase">Månedens Fremdrift</span>
+                                        {/* HER ER TALLET TILBAKE: */}
+                                        <span className="text-xs font-bold text-emerald-600">
+                                            {(() => {
+                                                const y = currentDate.getFullYear();
+                                                const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+                                                const prefix = `${y}-${m}`;
+                                                let tot = 0, done = 0;
+                                                campaigns.forEach(c => {
+                                                    if (c.date && c.date.startsWith(prefix) && c.tasks) {
+                                                        c.tasks.forEach(t => {
+                                                            if (visibleTypes.includes(t.type || 'ADMIN')) {
+                                                                tot++;
+                                                                if (t.completed) done++;
+                                                            }
+                                                        });
+                                                    }
+                                                });
+                                                return tot === 0 ? '0%' : `${Math.round((done/tot)*100)}%`;
+                                            })()}
+                                        </span>
+                                    </div>
                                     <div className="w-full h-2 bg-slate-200 rounded-full mt-1 overflow-hidden">
                                         <div className="h-full bg-emerald-500 transition-all duration-500" 
                                              style={{ width: (() => {
                                                  const y = currentDate.getFullYear();
                                                  const m = String(currentDate.getMonth() + 1).padStart(2, '0');
-                                                 const monthPrefix = `${y}-${m}`;
-                                                 let total = 0;
-                                                 let completed = 0;
+                                                 const prefix = `${y}-${m}`;
+                                                 let tot = 0, done = 0;
                                                  campaigns.forEach(c => {
-                                                     if (c.date.startsWith(monthPrefix) && c.tasks) {
+                                                     if (c.date && c.date.startsWith(prefix) && c.tasks) {
                                                          c.tasks.forEach(t => {
                                                              if (visibleTypes.includes(t.type || 'ADMIN')) {
-                                                                 total++;
-                                                                 if (t.completed) completed++;
+                                                                 tot++;
+                                                                 if (t.completed) done++;
                                                              }
                                                          });
                                                      }
                                                  });
-                                                 if (total === 0) return '0%';
-                                                 return `${Math.round((completed / total) * 100)}%`;
+                                                 return tot === 0 ? '0%' : `${Math.round((done/tot)*100)}%`;
                                              })() }}>
                                         </div>
                                     </div>
