@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeetMax Manager v3.0</title>
+    <title>MeetMax Manager v3.2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -23,33 +23,32 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         .btn-hover { transition: transform 0.1s; }
         .btn-hover:active { transform: scale(0.98); }
+        /* Checkbox style for month picker */
+        .month-checkbox:checked + div { background-color: #e0e7ff; color: #4338ca; font-weight: bold; border-color: #818cf8; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // SJEKK AT CONFIG ER LASTET INN
+        // --- KONFIGURASJONSSJEKK ---
         if (!window.MEETMAX_CONFIG) {
             document.getElementById('root').innerHTML = `
                 <div class="h-screen flex items-center justify-center text-red-600 flex-col gap-4 p-4 text-center">
                     <h1 class="text-2xl font-bold">Oppsettsfeil</h1>
                     <p>Finner ikke filen <code>src/config.js</code>.</p>
-                    <p>Sørg for at du har opprettet mappen <code>src</code> og lagt <code>config.js</code> inni der.</p>
                 </div>
             `;
-            throw new Error("Config file missing! Aborting app start.");
+            throw new Error("Config missing");
         }
 
-        // HENT VARIABLER FRA CONFIG.JS
         const JSONBIN_API_KEY = window.MEETMAX_CONFIG.API_KEY;
         const JSONBIN_BIN_ID = window.MEETMAX_CONFIG.BIN_ID;
-        const CAMPAIGN_CONFIG = window.MEETMAX_CONFIG.CAMPAIGN;
         const HOLIDAYS = window.HOLIDAYS;
         const COMMERCIAL_DAYS = window.COMMERCIAL_DAYS;
         const TASK_TYPES = window.TASK_TYPES;
 
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         // --- IKON WRAPPER ---
         const Icon = ({ name, size, color, className }) => {
@@ -71,10 +70,7 @@
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}></span>;
         };
 
-        const formatCurrency = (num) => (num || 0).toLocaleString('nb-NO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' kr';
-        const formatAdGroupName = (name) => (name || '').replace('Ad Group', 'AG').replace('(', '- ').replace(')', '').trim();
-
-        // --- BILDE HJELPER ---
+        // --- HJELPEFUNKSJONER ---
         const formatImageUrl = (url) => {
             if (!url) return '';
             let idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
@@ -84,7 +80,6 @@
             return url;
         };
 
-        // --- BACKUP & EXPORT ---
         const downloadBackup = (data) => {
             const json = JSON.stringify(data, null, 2);
             const blob = new Blob([json], { type: 'application/json' });
@@ -182,19 +177,21 @@
             });
         };
 
-        // --- APP ---
+        const monthNames = ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Desember"];
+
+        // --- APP KOMPONENT ---
         const App = () => {
             const [activeTab, setActiveTab] = useState('calendar');
             const [currentDate, setCurrentDate] = useState(new Date()); 
             
-            // STATE DATA
+            // DATA
             const [campaigns, setCampaigns] = useState([]);
-            const [kpiData, setKpiData] = useState([]); // NY: KPI DATA
-
+            const [kpiData, setKpiData] = useState([]);
             const [loading, setLoading] = useState(true);
             const [saving, setSaving] = useState(false);
             const [isDataLoaded, setIsDataLoaded] = useState(false);
 
+            // MODALS & EDIT
             const [modalType, setModalType] = useState(null); 
             const [selectedCampaign, setSelectedCampaign] = useState(null);
             const [editTitle, setEditTitle] = useState('');
@@ -202,55 +199,50 @@
             const [editTasks, setEditTasks] = useState([]); 
             const [activeDay, setActiveDay] = useState(null);
             
+            // GLOBAL ADD
             const [globalTaskType, setGlobalTaskType] = useState(null);
             const [globalDate, setGlobalDate] = useState('');
             const [globalTime, setGlobalTime] = useState('');
             const [globalDescription, setGlobalDescription] = useState('');
             const [globalImage, setGlobalImage] = useState(''); 
             
+            // FILTERS
             const [visibleTypes, setVisibleTypes] = useState(Object.keys(TASK_TYPES));
-            const [previewImage, setPreviewImage] = useState(null); 
             
+            // PREVIEW
+            const [previewImage, setPreviewImage] = useState(null); 
             const [isPreviewLocked, setIsPreviewLocked] = useState(false);
+            
+            // --- NYE FILTERS FOR AKTIVITETSLISTE ---
+            const [listFilter, setListFilter] = useState('all'); // 'all', 'pending'
+            const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+            const [selectedMonths, setSelectedMonths] = useState([new Date().getMonth()]); // Default: Current Month
+            const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
 
             const fileInputRef = useRef(null);
             const backupInputRef = useRef(null);
 
+            // LAST DATA
             const loadData = async () => {
                 setLoading(true);
                 try {
                     const res = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, { headers: { 'X-Master-Key': JSONBIN_API_KEY } });
                     if (res.ok) {
                         const json = await res.json();
-                        // HENT BÅDE CAMPAIGNS OG KPI DATA
-                        const loadedCampaigns = json.record && Array.isArray(json.record.campaigns) ? json.record.campaigns : [];
-                        const loadedKpiData = json.record && Array.isArray(json.record.kpiData) ? json.record.kpiData : [];
-                        
-                        setCampaigns(loadedCampaigns);
-                        setKpiData(loadedKpiData);
-                        
+                        setCampaigns(json.record.campaigns || []);
+                        setKpiData(json.record.kpiData || []);
                         setIsDataLoaded(true); 
                     } else { 
-                        console.error("Feil ved lasting:", res.status);
-                        alert("Kunne ikke laste data fra skyen. Sjekk internett.");
+                        alert("Kunne ikke laste data fra skyen.");
                     }
-                } catch (e) { 
-                    console.error("Nettverksfeil:", e); 
-                    alert("Nettverksfeil. Prøv å laste siden på nytt.");
-                } 
+                } catch (e) { alert("Nettverksfeil."); } 
                 finally { setLoading(false); }
             };
 
             const saveData = async (newCampaigns, newKpiData) => {
                 if (!isDataLoaded) return;
                 setSaving(true);
-                // Bruk eksisterende state hvis argumenter mangler
-                const dataToSave = {
-                    campaigns: newCampaigns || campaigns,
-                    kpiData: newKpiData || kpiData,
-                    updatedAt: new Date()
-                };
-
+                const dataToSave = { campaigns: newCampaigns || campaigns, kpiData: newKpiData || kpiData, updatedAt: new Date() };
                 try {
                     await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
                         method: 'PUT',
@@ -263,52 +255,24 @@
 
             useEffect(() => { loadData(); }, []);
             
-            // OPPDATERINGS-FUNKSJONER
-            const updateCampaigns = (newData) => { 
-                setCampaigns(newData); 
-                saveData(newData, null); // Beholder nåværende kpiData
-            };
-            
-            // NYE HANDLERS FOR KPI
-            const handleAddKpi = (newRow) => {
-                const newData = [...kpiData, newRow];
-                setKpiData(newData);
-                saveData(null, newData); // Beholder nåværende campaigns
-            };
+            const updateCampaigns = (newData) => { setCampaigns(newData); saveData(newData, null); };
+            const handleAddKpi = (newRow) => { const newData = [...kpiData, newRow]; setKpiData(newData); saveData(null, newData); };
+            const handleDeleteKpi = (id) => { if(confirm('Slett linje?')) { const d = kpiData.filter(i => i.id !== id); setKpiData(d); saveData(null, d); }};
 
-            const handleDeleteKpi = (idToDelete) => {
-                if (confirm('Er du sikker på at du vil slette denne linjen?')) {
-                    const newData = kpiData.filter(item => item.id !== idToDelete);
-                    setKpiData(newData);
-                    saveData(null, newData);
-                }
-            };
-
-
-            const toggleFilter = (type) => {
-                setVisibleTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
-            };
-
+            // FIL OPP-LASTING
             const handleRestoreBackup = (event) => {
                 const file = event.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
-                        const content = JSON.parse(e.target.result);
-                        if (content.campaigns || Array.isArray(content)) {
-                            // Håndter både gammelt format (kun array) og nytt format (objekt med keys)
-                            const cams = Array.isArray(content) ? content : (content.campaigns || []);
-                            const kpis = Array.isArray(content) ? [] : (content.kpiData || []);
-                            
-                            if (confirm(`Vil du gjenopprette backup? (${cams.length} kampanjer, ${kpis.length} datarader)`)) {
-                                setIsDataLoaded(true);
-                                setCampaigns(cams);
-                                setKpiData(kpis);
-                                saveData(cams, kpis);
-                            }
-                        } else { alert("Ugyldig backup-fil."); }
-                    } catch (err) { alert("Kunne ikke lese backup-filen."); }
+                        const c = JSON.parse(e.target.result);
+                        const cams = Array.isArray(c) ? c : (c.campaigns || []);
+                        const kpis = Array.isArray(c) ? [] : (c.kpiData || []);
+                        if (confirm(`Gjenopprett backup? (${cams.length} kampanjer)`)) {
+                            setCampaigns(cams); setKpiData(kpis); saveData(cams, kpis); setIsDataLoaded(true);
+                        }
+                    } catch (err) { alert("Feil filformat."); }
                 };
                 reader.readAsText(file);
                 event.target.value = null;
@@ -320,236 +284,158 @@
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
-                        const content = e.target.result;
-                        const importedEvents = parseICS(content);
-                        const newCampaigns = importedEvents.map(event => ({
-                            id: Date.now() + Math.random(),
-                            title: event.title,
-                            date: event.date,
-                            type: 'CAMPAIGN',
-                            tasks: [{ id: Date.now() + Math.random(), type: event.type, time: event.time, completed: false, customTitle: event.title }]
+                        const evts = parseICS(e.target.result);
+                        const newC = evts.map(e => ({
+                            id: Date.now() + Math.random(), title: e.title, date: e.date, type: 'CAMPAIGN',
+                            tasks: [{ id: Date.now() + Math.random(), type: e.type, time: e.time, completed: false, customTitle: e.title }]
                         }));
-                        updateCampaigns([...campaigns, ...newCampaigns]);
-                        alert(`Importerte ${newCampaigns.length} hendelser!`);
-                    } catch (error) { alert("Kunne ikke lese ICS fil."); }
+                        updateCampaigns([...campaigns, ...newC]);
+                        alert(`Importerte ${newC.length} hendelser!`);
+                    } catch (err) { alert("Kunne ikke lese ICS."); }
                 };
                 reader.readAsText(file);
                 event.target.value = null; 
             };
 
-            const handleEditClick = (campaign) => { 
-                setSelectedCampaign(campaign); 
-                setEditTitle(campaign.title); 
-                setEditDate(campaign.date); 
-                setEditTasks(JSON.parse(JSON.stringify(campaign.tasks || [])));
-                setModalType('edit'); 
+            // LOGIKK FOR AKTIVITETSLISTE
+            const uniqueYears = useMemo(() => {
+                const years = new Set([new Date().getFullYear(), new Date().getFullYear() + 1]); // Alltid ha med i år og neste år
+                campaigns.forEach(c => {
+                    if (c.date) years.add(new Date(c.date).getFullYear());
+                });
+                return Array.from(years).sort();
+            }, [campaigns]);
+
+            const getAllTasks = useMemo(() => {
+                let tasks = [];
+                campaigns.forEach(c => {
+                    if (c.tasks && c.tasks.length > 0) {
+                        c.tasks.forEach(t => {
+                            tasks.push({ ...t, campaignId: c.id, campaignTitle: c.title, date: c.date, sortKey: c.date + t.time });
+                        });
+                    }
+                });
+                tasks.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+                return tasks;
+            }, [campaigns]);
+
+            const filteredListTasks = useMemo(() => {
+                return getAllTasks.filter(t => {
+                    const d = new Date(t.date);
+                    const taskYear = d.getFullYear();
+                    const taskMonth = d.getMonth();
+
+                    // 1. Filtrer på År
+                    if (taskYear !== selectedYear) return false;
+
+                    // 2. Filtrer på Måned (Hvis ingen valgt -> Vis alle i året)
+                    if (selectedMonths.length > 0 && !selectedMonths.includes(taskMonth)) return false;
+
+                    // 3. Filtrer på Status
+                    if (listFilter === 'pending' && t.completed) return false;
+
+                    return true;
+                });
+            }, [getAllTasks, selectedYear, selectedMonths, listFilter]);
+
+            const toggleMonthSelection = (monthIndex) => {
+                setSelectedMonths(prev => {
+                    if (prev.includes(monthIndex)) return prev.filter(m => m !== monthIndex);
+                    return [...prev, monthIndex];
+                });
             };
             
-            const handleTaskTimeChange = (taskId, newTime) => {
-                setEditTasks(prev => prev.map(t => t.id === taskId ? { ...t, time: newTime } : t));
-            };
-            
-            const handleTaskImageChange = (taskId, newUrl) => {
-                setEditTasks(prev => prev.map(t => t.id === taskId ? { ...t, imageUrl: newUrl } : t));
+            const clearMonthSelection = () => setSelectedMonths([]);
+
+            const copyListToClipboard = () => {
+                const header = "Dato\tTid\tAktivitet\tBeskrivelse\tStatus";
+                const rows = filteredListTasks.map(t => {
+                    const status = t.completed ? "Ferdig" : "Åpen";
+                    return `${t.date}\t${t.time}\t${t.campaignTitle}\t${t.customTitle || ''}\t${status}`;
+                }).join('\n');
+                navigator.clipboard.writeText(`${header}\n${rows}`).then(() => alert("Liste kopiert!"));
             };
 
-            const handleDayManageClick = (day) => { setActiveDay(day); setModalType('manageDay'); };
-            const handleLegendAddClick = (type) => {
-                setGlobalTaskType(type);
-                const config = TASK_TYPES[type];
-                setGlobalTime(config.defaultTime);
-                setGlobalDescription(config.label);
-                setGlobalImage('');
-                
-                const today = new Date();
-                const year = today.getFullYear();
-                const month = String(today.getMonth() + 1).padStart(2, '0');
-                const day = String(today.getDate()).padStart(2, '0');
-                
-                setGlobalDate(`${year}-${month}-${day}`);
-                
-                setModalType('addGlobalTask');
-            };
-
+            // LOGIKK FOR KALENDER EDIT/ADD
+            const handleEditClick = (c) => { setSelectedCampaign(c); setEditTitle(c.title); setEditDate(c.date); setEditTasks(JSON.parse(JSON.stringify(c.tasks||[]))); setModalType('edit'); };
             const confirmEdit = () => {
                 if (selectedCampaign && editTitle && editDate) {
-                    const updatedCampaigns = campaigns.map(c => {
-                        if (c.id === selectedCampaign.id) {
-                            return { 
-                                ...c, 
-                                title: editTitle, 
-                                date: editDate, 
-                                tasks: editTasks
-                            };
-                        }
-                        return c;
-                    });
-                    updateCampaigns(updatedCampaigns);
+                    updateCampaigns(campaigns.map(c => c.id === selectedCampaign.id ? { ...c, title: editTitle, date: editDate, tasks: editTasks } : c));
                     setModalType(null);
                 }
             };
-            const confirmDelete = (idToDelete) => { if (idToDelete) updateCampaigns(campaigns.filter(c => c.id !== idToDelete)); };
+            const toggleTask = (cid, tid) => {
+                updateCampaigns(campaigns.map(c => c.id === cid ? { ...c, tasks: (c.tasks||[]).map(t => t.id === tid ? { ...t, completed: !t.completed } : t) } : c));
+            };
+            const handleTaskTimeChange = (id, val) => setEditTasks(prev => prev.map(t => t.id === id ? { ...t, time: val } : t));
+            const handleTaskImageChange = (id, val) => setEditTasks(prev => prev.map(t => t.id === id ? { ...t, imageUrl: val } : t));
             
+            const handleLegendAddClick = (type) => {
+                setGlobalTaskType(type);
+                setGlobalTime(TASK_TYPES[type].defaultTime);
+                setGlobalDescription(TASK_TYPES[type].label);
+                setGlobalImage('');
+                const now = new Date();
+                setGlobalDate(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`);
+                setModalType('addGlobalTask');
+            };
             const confirmGlobalAdd = () => {
                 if (!globalTaskType || !globalDate) return;
-                
-                const newTask = {
-                    id: Date.now() + '_' + Math.random(),
-                    type: globalTaskType,
-                    time: globalTime || '12:00',
-                    completed: false,
-                    customTitle: globalDescription,
-                    imageUrl: globalImage 
-                };
-                
-                const newCampaign = {
-                    id: Date.now(),
-                    title: globalDescription,
-                    date: globalDate,
-                    type: 'CAMPAIGN',
-                    tasks: [newTask]
-                };
-                
-                updateCampaigns([...campaigns, newCampaign]);
+                const newTask = { id: Date.now()+'_'+Math.random(), type: globalTaskType, time: globalTime, completed: false, customTitle: globalDescription, imageUrl: globalImage };
+                updateCampaigns([...campaigns, { id: Date.now(), title: globalDescription, date: globalDate, type: 'CAMPAIGN', tasks: [newTask] }]);
                 setModalType(null);
-            };
-
-            const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-            const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-            
-            const calculateProgress = () => {
-                const year = currentDate.getFullYear();
-                const month = currentDate.getMonth();
-
-                const currentMonthCampaigns = campaigns.filter(c => {
-                    if (!c.date) return false;
-                    const parts = c.date.split('-');
-                    if (parts.length !== 3) return false;
-                    const cYear = parseInt(parts[0], 10);
-                    const cMonth = parseInt(parts[1], 10) - 1;
-                    return cYear === year && cMonth === month;
-                });
-                
-                let totalTasks = 0;
-                let completedTasks = 0;
-
-                currentMonthCampaigns.forEach(c => {
-                      const visibleTasks = (c.tasks || []).filter(t => visibleTypes.includes(t.type || 'ADMIN'));
-                      totalTasks += visibleTasks.length;
-                      completedTasks += visibleTasks.filter(t => t.completed).length;
-                });
-
-                return totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-            };
-            const progress = calculateProgress();
-
-            const toggleTask = (campaignId, taskId) => {
-                updateCampaigns(campaigns.map(c => {
-                    if (c.id === campaignId) return { ...c, tasks: (c.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t) };
-                    return c;
-                }));
-            };
-
-            const monthNames = ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Desember"];
-            const getDaysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
-            const getFirstDay = (y, m) => { let d = new Date(y, m, 1).getDay(); return d === 0 ? 6 : d - 1; };
-            const getWeekNumber = (d) => {
-                d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-                d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-                const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-                return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
             };
 
             const renderCalendar = () => {
                 const year = currentDate.getFullYear();
                 const month = currentDate.getMonth();
-                const daysNum = getDaysInMonth(year, month);
-                const firstDay = getFirstDay(year, month);
+                const daysNum = new Date(year, month + 1, 0).getDate();
+                const firstDay = new Date(year, month, 1).getDay();
+                const startEmpty = firstDay === 0 ? 6 : firstDay - 1;
                 const days = [];
 
-                for (let i = 0; i < firstDay; i++) {
-                    days.push(<div key={`empty-${i}`} className="h-60 bg-slate-50 border border-slate-100"></div>);
-                }
+                for (let i = 0; i < startEmpty; i++) days.push(<div key={`empty-${i}`} className="h-60 bg-slate-50 border border-slate-100"></div>);
 
                 for (let d = 1; d <= daysNum; d++) {
                     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     const dayCamps = campaigns.filter(c => c.date === dateStr);
+                    const visibleDayCamps = dayCamps.filter(c => (!c.tasks || c.tasks.length === 0) || c.tasks.some(t => visibleTypes.includes(t.type || 'ADMIN')));
+                    const allDone = visibleDayCamps.length > 0 && visibleDayCamps.every(c => (c.tasks||[]).filter(t => visibleTypes.includes(t.type||'ADMIN')).every(t => t.completed));
                     const isToday = new Date().toDateString() === new Date(year, month, d).toDateString();
                     
-                    const holidayName = HOLIDAYS[dateStr];
-                    const commercialName = COMMERCIAL_DAYS[dateStr];
-                    
-                    const hasVisibleTasks = (c) => {
-                        if (!c.tasks || c.tasks.length === 0) return true; 
-                        return c.tasks.some(t => visibleTypes.includes(t.type || 'ADMIN'));
-                    };
-                    const visibleDayCamps = dayCamps.filter(hasVisibleTasks);
-                    const allTasksDone = visibleDayCamps.length > 0 && visibleDayCamps.every(c => (c.tasks || []).filter(t => visibleTypes.includes(t.type || 'ADMIN')).every(t => t.completed));
-                    
-                    let dayStyle = "bg-white border-slate-200"; 
-                    if (allTasksDone) dayStyle = "bg-emerald-50 border-emerald-300"; 
-                    else if (isToday) dayStyle = "bg-blue-50 border-blue-400"; 
-
-                    const dateObj = new Date(year, month, d);
-                    const isMonday = dateObj.getDay() === 1;
-                    const weekNum = getWeekNumber(dateObj);
+                    let bg = "bg-white border-slate-200";
+                    if (allDone) bg = "bg-emerald-50 border-emerald-300";
+                    else if (isToday) bg = "bg-blue-50 border-blue-400";
 
                     days.push(
-                        <div key={d} className={`h-60 border p-2 relative group hover:shadow-md transition-all ${dayStyle}`}>
-                            {isMonday && <div className="absolute top-1 left-1 bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded">Uke {weekNum}</div>}
-                            <div className="flex justify-between items-start mb-2 mt-4"> 
-                                <div className="flex flex-col">
-                                    <div className="flex items-center gap-1">
-                                        <span className={`text-sm font-bold ${holidayName ? 'text-red-600' : commercialName ? 'text-blue-600' : isToday ? 'text-blue-600' : 'text-slate-700'}`}>{d}</span>
-                                        {allTasksDone && <Icon name="check-circle" size={14} color="text-emerald-500" />}
-                                    </div>
-                                    {holidayName && <span className="text-[10px] font-medium text-red-500 leading-tight mt-1">{holidayName}</span>}
-                                    {commercialName && <span className="text-[10px] font-medium text-blue-600 leading-tight mt-1">{commercialName}</span>}
+                        <div key={d} className={`h-60 border p-2 relative group hover:shadow-md transition-all ${bg}`}>
+                            <div className="flex justify-between items-start mb-2 mt-4">
+                                <div>
+                                    <span className={`text-sm font-bold ${HOLIDAYS[dateStr] ? 'text-red-600' : isToday ? 'text-blue-600' : 'text-slate-700'}`}>{d}</span>
+                                    {allDone && <Icon name="check-circle" size={14} color="text-emerald-500" className="ml-1 inline"/>}
+                                    {HOLIDAYS[dateStr] && <div className="text-[10px] text-red-500 leading-tight">{HOLIDAYS[dateStr]}</div>}
+                                    {COMMERCIAL_DAYS[dateStr] && <div className="text-[10px] text-blue-600 leading-tight">{COMMERCIAL_DAYS[dateStr]}</div>}
                                 </div>
-                                {visibleDayCamps.length > 0 && (
-                                    <button onClick={() => { setActiveDay(d); setModalType('manageDay'); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity" title="Slett"><Icon name="trash-2" size={16} /></button>
-                                )}
+                                {visibleDayCamps.length > 0 && <button onClick={() => { setActiveDay(d); setModalType('manageDay'); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"><Icon name="trash-2" size={16}/></button>}
                             </div>
                             <div className="space-y-2 overflow-y-auto max-h-[160px] custom-scrollbar">
                                 {visibleDayCamps.map(c => (
-                                    <div key={c.id} className={`p-2 rounded border shadow-sm bg-white text-xs ${allTasksDone ? 'opacity-70' : ''} group/card relative`}>
-                                        <div className="font-bold text-slate-800 mb-1 border-b pb-1 flex justify-between items-center">
-                                            <span onClick={() => { handleEditClick(c); }} className="cursor-pointer hover:text-indigo-600 truncate flex-1">{c.title}</span>
-                                            <div className="flex gap-1"><button onClick={(e) => { e.stopPropagation(); downloadICS(c); }} className="opacity-0 group-hover/card:opacity-100 text-slate-400 hover:text-indigo-500 transition-opacity" title="Last ned .ics"><Icon name="download" size={12} /></button></div>
+                                    <div key={c.id} className={`p-2 rounded border shadow-sm bg-white text-xs ${allDone?'opacity-70':''} group/card relative`}>
+                                        <div className="font-bold text-slate-800 mb-1 border-b pb-1 flex justify-between">
+                                            <span onClick={() => handleEditClick(c)} className="cursor-pointer hover:text-indigo-600 truncate flex-1">{c.title}</span>
+                                            <button onClick={(e) => {e.stopPropagation(); downloadICS(c);}} className="opacity-0 group-hover/card:opacity-100 text-slate-400 hover:text-indigo-500"><Icon name="download" size={12}/></button>
                                         </div>
                                         <div>
-                                            {(c.tasks || [])
-                                                .filter(t => visibleTypes.includes(t.type || 'ADMIN'))
-                                                .map(t => {
-                                                    const conf = TASK_TYPES[t.type] || TASK_TYPES['ADMIN'];
-                                                    const formattedImgUrl = formatImageUrl(t.imageUrl);
-                                                    
-                                                    return (
-                                                        <div key={t.id} className="mt-1">
-                                                            <div onClick={() => toggleTask(c.id, t.id)} className={`flex items-center gap-2 cursor-pointer ${t.completed ? 'opacity-50 line-through' : ''}`}>
-                                                                <Icon name={conf.icon} size={12} color={conf.color.split(' ')[0]} />
-                                                                <span className="truncate flex-1">{t.time}</span>
-                                                                
-                                                                {/* BILDE-IKON */}
-                                                                {formattedImgUrl && (
-                                                                    <div 
-                                                                        className="relative has-image p-[5px] -m-[5px] z-10"
-                                                                        onClick={(e) => { 
-                                                                            e.stopPropagation(); 
-                                                                            if (window.matchMedia("(pointer: coarse)").matches) {
-                                                                                setPreviewImage(formattedImgUrl);
-                                                                                setIsPreviewLocked(true); 
-                                                                            }
-                                                                        }}
-                                                                        onMouseEnter={() => !window.matchMedia("(pointer: coarse)").matches && setPreviewImage(formattedImgUrl)}
-                                                                        onMouseLeave={() => !window.matchMedia("(pointer: coarse)").matches && !isPreviewLocked && setPreviewImage(null)}
-                                                                    >
-                                                                        <Icon name="camera" size={12} color="text-slate-400" />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )
+                                            {(c.tasks||[]).filter(t => visibleTypes.includes(t.type||'ADMIN')).map(t => {
+                                                const conf = TASK_TYPES[t.type]||TASK_TYPES['ADMIN'];
+                                                const img = formatImageUrl(t.imageUrl);
+                                                return (
+                                                    <div key={t.id} onClick={() => toggleTask(c.id, t.id)} className={`flex items-center gap-2 cursor-pointer mt-1 ${t.completed?'opacity-50 line-through':''}`}>
+                                                        <Icon name={conf.icon} size={12} color={conf.color.split(' ')[0]} />
+                                                        <span className="truncate flex-1">{t.time}</span>
+                                                        {img && <div className="p-1 z-10" onClick={(e)=>{e.stopPropagation(); setPreviewImage(img); setIsPreviewLocked(true);}} onMouseEnter={()=>!window.matchMedia("(pointer:coarse)").matches && setPreviewImage(img)} onMouseLeave={()=>!window.matchMedia("(pointer:coarse)").matches && !isPreviewLocked && setPreviewImage(null)}><Icon name="camera" size={12} color="text-slate-400"/></div>}
+                                                    </div>
+                                                );
                                             })}
                                         </div>
                                     </div>
@@ -567,10 +453,7 @@
                 <div className="max-w-7xl mx-auto p-4 bg-slate-50 min-h-screen">
                     {/* GLOBAL PREVIEW */}
                     {previewImage && (
-                        <div 
-                            className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-[fade-in_0.2s] ${isPreviewLocked ? 'cursor-pointer pointer-events-auto' : 'pointer-events-none'}`} 
-                            onClick={() => { setPreviewImage(null); setIsPreviewLocked(false); }}
-                        >
+                        <div className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-[fade-in_0.2s] ${isPreviewLocked ? 'cursor-pointer pointer-events-auto' : 'pointer-events-none'}`} onClick={() => { setPreviewImage(null); setIsPreviewLocked(false); }}>
                             <div className="relative max-w-4xl max-h-[90vh]">
                                 <img src={previewImage} alt="Preview" className="w-full h-full object-contain rounded-lg shadow-2xl" />
                                 {isPreviewLocked && <p className="text-white text-center mt-2 text-sm">Trykk hvor som helst for å lukke</p>}
@@ -578,7 +461,7 @@
                         </div>
                     )}
 
-                    {/* MODALER (Forkortet) */}
+                    {/* MODALER */}
                     {modalType && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                             <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm">
@@ -586,56 +469,53 @@
                                     <>
                                         <h3 className="font-bold text-lg mb-4">Legg til {TASK_TYPES[globalTaskType]?.label}</h3>
                                         <div className="space-y-4">
-                                            <div><label className="block text-xs font-bold text-slate-500">Beskrivelse</label><input className="w-full border p-2 rounded" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} /></div>
-                                            <div><label className="block text-xs font-bold text-slate-500">Bilde-URL (Google Drive / Nett)</label><input className="w-full border p-2 rounded" value={globalImage} onChange={e => setGlobalImage(e.target.value)} placeholder="https://..." /></div>
-                                            <div><label className="block text-xs font-bold text-slate-500">Dato</label><input type="date" className="w-full border p-2 rounded" value={globalDate} onChange={e => setGlobalDate(e.target.value)} /></div>
-                                            <div><label className="block text-xs font-bold text-slate-500">Tid</label><input type="time" className="w-full border p-2 rounded" value={globalTime} onChange={e => setGlobalTime(e.target.value)} /></div>
+                                            <div><label className="text-xs font-bold text-slate-500">Beskrivelse</label><input className="w-full border p-2 rounded" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} /></div>
+                                            <div><label className="text-xs font-bold text-slate-500">Bilde-URL</label><input className="w-full border p-2 rounded" value={globalImage} onChange={e => setGlobalImage(e.target.value)} /></div>
+                                            <div><label className="text-xs font-bold text-slate-500">Dato</label><input type="date" className="w-full border p-2 rounded" value={globalDate} onChange={e => setGlobalDate(e.target.value)} /></div>
+                                            <div><label className="text-xs font-bold text-slate-500">Tid</label><input type="time" className="w-full border p-2 rounded" value={globalTime} onChange={e => setGlobalTime(e.target.value)} /></div>
                                             <div className="flex justify-end gap-2"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button><button onClick={confirmGlobalAdd} className="px-4 py-2 bg-indigo-600 text-white rounded">Legg til</button></div>
                                         </div>
                                     </>
                                 )}
-                                {modalType === 'edit' && (<><h3 className="font-bold text-lg mb-4">Rediger Aktivitet</h3><div className="space-y-4 mb-4"><div><label className="block text-xs font-bold text-slate-500 uppercase">Tittel</label><input className="w-full border p-2 rounded" value={editTitle} onChange={e => setEditTitle(e.target.value)} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase">Flytt til Dato</label><input type="date" className="w-full border p-2 rounded" value={editDate} onChange={e => setEditDate(e.target.value)} /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Oppgaver</label><div className="max-h-40 overflow-y-auto border border-slate-100 rounded p-1">{editTasks.map(task => { const conf = TASK_TYPES[task.type] || TASK_TYPES['ADMIN']; return (<div key={task.id} className="mb-2 p-2 bg-slate-50 rounded border border-slate-200"><div className="flex items-center gap-2 mb-1"><Icon name={conf.icon} size={14} color={conf.color.split(' ')[0]} /><span className="text-xs font-bold">{conf.label}</span></div><div className="flex gap-2"><input type="time" value={task.time} onChange={(e) => handleTaskTimeChange(task.id, e.target.value)} className="border rounded px-1 py-0.5 text-xs w-16"/><input type="text" value={task.imageUrl || ''} onChange={(e) => handleTaskImageChange(task.id, e.target.value)} className="border rounded px-1 py-0.5 text-xs flex-1" placeholder="Bilde URL..."/></div></div>);})}</div></div></div><div className="flex justify-end gap-2"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button><button onClick={confirmEdit} className="px-4 py-2 bg-indigo-600 text-white rounded">Lagre</button></div></>)}
-                                {modalType === 'manageDay' && (<><h3 className="font-bold text-lg mb-4">Slett aktiviteter</h3><div className="max-h-60 overflow-y-auto space-y-2 mb-4">{campaigns.filter(c => c.date === `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(activeDay).padStart(2,'0')}`).map(c => (<div key={c.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border"><span>{c.title}</span><button onClick={() => updateCampaigns(campaigns.filter(x => x.id !== c.id))} className="text-red-500 text-sm font-bold">SLETT</button></div>))}</div><div className="flex justify-end"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Lukk</button></div></>)}
+                                {modalType === 'edit' && (<><h3 className="font-bold text-lg mb-4">Rediger</h3><div className="space-y-4 mb-4"><div><label className="text-xs font-bold text-slate-500">Tittel</label><input className="w-full border p-2 rounded" value={editTitle} onChange={e => setEditTitle(e.target.value)} /></div><div><label className="text-xs font-bold text-slate-500">Dato</label><input type="date" className="w-full border p-2 rounded" value={editDate} onChange={e => setEditDate(e.target.value)} /></div><div><label className="text-xs font-bold text-slate-500 mb-1">Oppgaver</label><div className="max-h-40 overflow-y-auto border border-slate-100 rounded p-1">{editTasks.map(task => { const conf = TASK_TYPES[task.type]||TASK_TYPES['ADMIN']; return (<div key={task.id} className="mb-2 p-2 bg-slate-50 rounded border border-slate-200"><div className="flex items-center gap-2 mb-1"><Icon name={conf.icon} size={14} color={conf.color.split(' ')[0]} /><span className="text-xs font-bold">{conf.label}</span></div><div className="flex gap-2"><input type="time" value={task.time} onChange={(e) => handleTaskTimeChange(task.id, e.target.value)} className="border rounded px-1 py-0.5 text-xs w-16"/><input type="text" value={task.imageUrl||''} onChange={(e) => handleTaskImageChange(task.id, e.target.value)} className="border rounded px-1 py-0.5 text-xs flex-1" placeholder="URL..."/></div></div>);})}</div></div></div><div className="flex justify-end gap-2"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button><button onClick={confirmEdit} className="px-4 py-2 bg-indigo-600 text-white rounded">Lagre</button></div></>)}
+                                {modalType === 'manageDay' && (<><h3 className="font-bold text-lg mb-4">Slett</h3><div className="max-h-60 overflow-y-auto space-y-2 mb-4">{campaigns.filter(c => c.date === `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(activeDay).padStart(2,'0')}`).map(c => (<div key={c.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border"><span>{c.title}</span><button onClick={() => updateCampaigns(campaigns.filter(x => x.id !== c.id))} className="text-red-500 text-sm font-bold">SLETT</button></div>))}</div><div className="flex justify-end"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Lukk</button></div></>)}
                             </div>
                         </div>
                     )}
 
-                    {/* HEADER */}
+                    {/* TOP BAR */}
                     <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
                         <div className="mb-4 md:mb-0">
                             <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-3"><span className="bg-indigo-600 text-white p-2 rounded-lg"><Icon name="calendar" size={24}/></span> MeetMax Manager</h1>
                             <div className="flex items-center gap-3 mt-1 ml-1">
                                 <p className="text-slate-500 text-sm">Oversikt for <span className="font-semibold text-indigo-600">Me & Max</span></p>
-                                {saving ? <span className="text-xs text-orange-500 flex items-center gap-1"><Icon name="loader-2" size={10} className="animate-spin"/> Lagrer...</span> : <span className="text-xs text-green-600 flex items-center gap-1"><Icon name="cloud" size={10} /> Koblet til skyen</span>}
-                                {!isDataLoaded && <span className="text-xs text-red-500 flex items-center gap-1"><Icon name="alert-triangle" size={10} /> OFFLINE</span>}
+                                {saving ? <span className="text-xs text-orange-500 flex items-center gap-1"><Icon name="loader-2" size={10} className="animate-spin"/> Lagrer...</span> : <span className="text-xs text-green-600 flex items-center gap-1"><Icon name="cloud" size={10} /> Online</span>}
                             </div>
                         </div>
                         
                         <div className="flex gap-2 mr-auto ml-4">
                              <button onClick={() => downloadBackup({ campaigns, kpiData })} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1"><Icon name="download" size={12}/> Backup</button>
-                             <button onClick={() => downloadCSV(campaigns)} className="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-3 py-1 rounded flex items-center gap-1" title="Eksporter til Excel"><Icon name="file-spreadsheet" size={12}/> CSV</button>
+                             <button onClick={() => downloadCSV(campaigns)} className="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-3 py-1 rounded flex items-center gap-1"><Icon name="file-spreadsheet" size={12}/> CSV</button>
                              <label className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1 cursor-pointer">
-                                <Icon name="upload" size={12}/> Restore
-                                <input type="file" accept=".json" className="hidden" ref={backupInputRef} onChange={handleRestoreBackup} />
+                                <Icon name="upload" size={12}/> Restore <input type="file" accept=".json" className="hidden" ref={backupInputRef} onChange={handleRestoreBackup} />
                              </label>
                         </div>
 
                         <div className="bg-slate-100 p-1 rounded-lg flex items-center">
                             <button onClick={() => setActiveTab('calendar')} className={`px-4 py-2 rounded text-sm font-bold ${activeTab === 'calendar' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Kalender</button>
+                            <button onClick={() => setActiveTab('activities')} className={`px-4 py-2 rounded text-sm font-bold ${activeTab === 'activities' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Vis Aktiviteter</button>
                             <button onClick={() => setActiveTab('analysis')} className={`px-4 py-2 rounded text-sm font-bold ${activeTab === 'analysis' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Analyse</button>
                         </div>
                     </div>
 
-                    {/* INNHOLD */}
-                    {activeTab === 'calendar' ? (
-                        <div>
-                            {/* Kalender Header */}
+                    {/* CONTENT - KALENDER */}
+                    {activeTab === 'calendar' && (
+                        <div className="animate-[fade-in_0.2s]">
                             <div className="flex justify-between items-end mb-4">
                                 <div className="hidden md:block">
                                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Månedens Fremdrift</span>
                                     <div className="flex items-center gap-3 mt-1">
-                                        <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 transition-all duration-500" style={{width: `${progress}%`}}></div></div>
-                                        <span className="font-bold text-sm text-emerald-600">{progress}%</span>
+                                        <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 transition-all duration-500" style={{width: `${(campaigns.filter(c=>c.date.startsWith(`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}`)).reduce((a,c)=>a+(c.tasks||[]).filter(t=>t.completed&&visibleTypes.includes(t.type||'ADMIN')).length,0) / (campaigns.filter(c=>c.date.startsWith(`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}`)).reduce((a,c)=>a+(c.tasks||[]).filter(t=>visibleTypes.includes(t.type||'ADMIN')).length,0) || 1)) * 100}%`}}></div></div>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
@@ -643,16 +523,14 @@
                                         <Icon name="upload" size={16} /> <span>Import .ics</span>
                                         <input type="file" accept=".ics" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
                                     </label>
-
                                     <div className="flex items-center gap-2 bg-white p-2 rounded shadow-sm">
-                                        <button onClick={handlePrevMonth}><Icon name="chevron-left" /></button>
+                                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}><Icon name="chevron-left" /></button>
                                         <span className="font-bold w-32 text-center">{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</span>
-                                        <button onClick={handleNextMonth}><Icon name="chevron-right" /></button>
+                                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}><Icon name="chevron-right" /></button>
                                     </div>
                                 </div>
                             </div>
                             
-                            {/* Grid */}
                             <div className="grid grid-cols-7 gap-px bg-slate-200 border rounded-t overflow-hidden">
                                 {['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'].map(d => <div key={d} className="bg-white p-2 text-center font-bold text-xs text-slate-500 uppercase">{d}</div>)}
                             </div>
@@ -660,49 +538,151 @@
                                 {renderCalendar()}
                             </div>
 
-                            {/* Legend / Knapper */}
                             <div className="mt-8 flex flex-wrap gap-4 justify-center">
-                                {Object.entries(TASK_TYPES).map(([key, conf]) => {
-                                    const isVisible = visibleTypes.includes(key);
-                                    return (
-                                        <div key={key} className="flex items-center bg-white rounded-full border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-all">
-                                            <button 
-                                                onClick={() => toggleFilter(key)}
-                                                className={`flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors ${!isVisible ? 'opacity-40 grayscale' : ''}`}
-                                                title={isVisible ? "Skjul i kalender" : "Vis i kalender"}
-                                            >
-                                                <div className={`w-3 h-3 rounded border flex items-center justify-center ${isVisible ? 'bg-indigo-600 border-transparent' : 'border-slate-400 bg-transparent'}`}>
-                                                    {isVisible && <Icon name="check" size={8} className="text-white" />}
-                                                </div>
-                                                <Icon name={conf.icon} color={conf.color.split(' ')[0]} size={14} />
-                                                <span className="font-medium text-sm text-slate-700">{conf.label}</span>
-                                            </button>
-                                            
-                                            <div className="w-px h-4 bg-slate-200"></div>
-
-                                            <button 
-                                                onClick={() => handleLegendAddClick(key)}
-                                                className="px-2 py-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
-                                                title={`Legg til ny ${conf.label}`}
-                                            >
-                                                <Icon name="plus" size={14} />
-                                            </button>
-                                        </div>
-                                    )
-                                })}
+                                {Object.entries(TASK_TYPES).map(([key, conf]) => (
+                                    <div key={key} className="flex items-center bg-white rounded-full border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-all">
+                                        <button onClick={() => setVisibleTypes(p => p.includes(key) ? p.filter(t=>t!==key) : [...p, key])} className={`flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 ${!visibleTypes.includes(key)?'opacity-40 grayscale':''}`}>
+                                            <div className={`w-3 h-3 rounded border flex items-center justify-center ${visibleTypes.includes(key)?'bg-indigo-600 border-transparent':'border-slate-400 bg-transparent'}`}>{visibleTypes.includes(key)&&<Icon name="check" size={8} className="text-white"/>}</div>
+                                            <Icon name={conf.icon} color={conf.color.split(' ')[0]} size={14} /><span className="font-medium text-sm text-slate-700">{conf.label}</span>
+                                        </button>
+                                        <div className="w-px h-4 bg-slate-200"></div>
+                                        <button onClick={() => handleLegendAddClick(key)} className="px-2 py-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600"><Icon name="plus" size={14} /></button>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-                    ) : (
-                        // HER ER KOBLINGEN TIL ANALYSE FILEN:
-                        <window.AnalyseDashboard 
-                            kpiData={kpiData} 
-                            onAddKpi={handleAddKpi} 
-                            onDeleteKpi={handleDeleteKpi} 
-                        />
+                    )}
+
+                    {/* CONTENT - AKTIVITETSLISTE */}
+                    {activeTab === 'activities' && (
+                        <div className="animate-[fade-in_0.2s]">
+                            <div className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+                                {/* TOOLBAR */}
+                                <div className="p-4 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-slate-50">
+                                    
+                                    {/* FILTERS VENSTRE SIDE */}
+                                    <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+                                        
+                                        {/* ÅR VELGER */}
+                                        <select 
+                                            value={selectedYear} 
+                                            onChange={(e) => setSelectedYear(parseInt(e.target.value))} 
+                                            className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg p-2.5 focus:ring-indigo-500 focus:border-indigo-500 font-bold"
+                                        >
+                                            {uniqueYears.map(year => <option key={year} value={year}>{year}</option>)}
+                                        </select>
+
+                                        {/* MÅNED VELGER (Dropdown med Checkboxes) */}
+                                        <div className="relative">
+                                            <button 
+                                                onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
+                                                className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg p-2.5 flex items-center gap-2 font-bold min-w-[150px] justify-between"
+                                            >
+                                                <span>{selectedMonths.length === 0 ? "Hele året" : selectedMonths.length === 1 ? monthNames[selectedMonths[0]] : `${selectedMonths.length} valgt`}</span>
+                                                <Icon name="chevron-down" size={16} />
+                                            </button>
+                                            
+                                            {isMonthPickerOpen && (
+                                                <>
+                                                    <div className="fixed inset-0 z-10" onClick={() => setIsMonthPickerOpen(false)}></div>
+                                                    <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 p-2 max-h-[400px] overflow-y-auto">
+                                                        <div className="flex justify-between items-center mb-2 px-2">
+                                                            <span className="text-xs font-bold text-slate-500 uppercase">Velg måneder</span>
+                                                            <button onClick={clearMonthSelection} className="text-xs text-indigo-600 hover:text-indigo-800">Nullstill</button>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 gap-1">
+                                                            {monthNames.map((m, idx) => (
+                                                                <label key={idx} className="flex items-center cursor-pointer hover:bg-slate-50 rounded p-1">
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={selectedMonths.includes(idx)} 
+                                                                        onChange={() => toggleMonthSelection(idx)}
+                                                                        className="month-checkbox hidden"
+                                                                    />
+                                                                    <div className={`w-4 h-4 mr-2 border rounded flex items-center justify-center ${selectedMonths.includes(idx) ? 'bg-indigo-600 border-transparent' : 'border-slate-300 bg-white'}`}>
+                                                                        {selectedMonths.includes(idx) && <Icon name="check" size={10} className="text-white"/>}
+                                                                    </div>
+                                                                    <span className={`text-sm ${selectedMonths.includes(idx) ? 'font-bold text-indigo-700' : 'text-slate-700'}`}>{m}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {/* STATUS FILTER */}
+                                        <div className="flex bg-white rounded-lg p-1 border shadow-sm ml-2">
+                                            <button onClick={() => setListFilter('all')} className={`px-3 py-1.5 text-xs font-bold rounded ${listFilter==='all'?'bg-indigo-100 text-indigo-700':'text-slate-500 hover:bg-slate-50'}`}>Alle</button>
+                                            <button onClick={() => setListFilter('pending')} className={`px-3 py-1.5 text-xs font-bold rounded ${listFilter==='pending'?'bg-indigo-100 text-indigo-700':'text-slate-500 hover:bg-slate-50'}`}>Kun åpne</button>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* HØYRE SIDE - KOPIER */}
+                                    <button onClick={copyListToClipboard} className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 active:scale-95 transition-all shadow-sm whitespace-nowrap">
+                                        <Icon name="copy" size={14} /> Kopier liste
+                                    </button>
+                                </div>
+                                
+                                {/* TABLE */}
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-slate-200">
+                                        <thead className="bg-slate-50">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Dato</th>
+                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Tid</th>
+                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Type</th>
+                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Aktivitet</th>
+                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Beskrivelse</th>
+                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Info</th>
+                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-slate-200">
+                                            {filteredListTasks.length === 0 ? (
+                                                <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">Ingen aktiviteter funnet med dette filteret.</td></tr>
+                                            ) : (
+                                                filteredListTasks.map((task, idx) => {
+                                                    const config = TASK_TYPES[task.type] || TASK_TYPES['ADMIN'];
+                                                    const hasLink = !!task.imageUrl;
+                                                    const isOverdue = !task.completed && new Date(task.date) < new Date(new Date().setHours(0,0,0,0));
+                                                    
+                                                    return (
+                                                        <tr key={`${task.id}-${idx}`} className="hover:bg-slate-50 group transition-colors">
+                                                            <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-slate-900'}`}>{task.date}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{task.time}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap"><div className="flex items-center gap-2"><Icon name={config.icon} size={14} color={config.color.split(' ')[0]} /><span className="text-sm text-slate-700">{config.label}</span></div></td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 font-bold">{task.campaignTitle}</td>
+                                                            <td className="px-6 py-4 text-sm text-slate-600 max-w-xs truncate" title={task.customTitle}>{task.customTitle || '-'}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                                {hasLink && (
+                                                                    <button onClick={() => { setPreviewImage(formatImageUrl(task.imageUrl)); setIsPreviewLocked(true); }} className="text-indigo-500 hover:text-indigo-700 hover:scale-110 transition-transform">
+                                                                        <Icon name="paperclip" size={16} />
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                                <button onClick={() => toggleTask(task.campaignId, task.id)} className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition-colors ${task.completed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'}`}>
+                                                                    {task.completed ? 'Ferdig' : 'Åpen'}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'analysis' && (
+                        <window.AnalyseDashboard kpiData={kpiData} onAddKpi={handleAddKpi} onDeleteKpi={handleDeleteKpi} />
                     )}
 
                     <footer className="mt-12 py-6 border-t border-slate-200 text-center text-xs text-slate-400">
-                        &copy; 2026 Me & Max AS - Versjon 3.0 | Mike & his friend Gemini
+                        &copy; 2026 Me & Max AS - Versjon 3.2 | Mike & his friend Gemini
                     </footer>
                 </div>
             );
