@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeetMax Manager v3.2</title>
+    <title>MeetMax Manager v3.4 (Full)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -23,15 +23,16 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         .btn-hover { transition: transform 0.1s; }
         .btn-hover:active { transform: scale(0.98); }
-        /* Checkbox style for month picker */
         .month-checkbox:checked + div { background-color: #e0e7ff; color: #4338ca; font-weight: bold; border-color: #818cf8; }
+        th.sortable { cursor: pointer; user-select: none; transition: background-color 0.2s; }
+        th.sortable:hover { background-color: #f1f5f9; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- KONFIGURASJONSSJEKK ---
+        // --- 1. SJEKK AV CONFIG ---
         if (!window.MEETMAX_CONFIG) {
             document.getElementById('root').innerHTML = `
                 <div class="h-screen flex items-center justify-center text-red-600 flex-col gap-4 p-4 text-center">
@@ -50,7 +51,7 @@
 
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // --- IKON WRAPPER ---
+        // --- 2. HJELPEKOMPONENTER ---
         const Icon = ({ name, size, color, className }) => {
             const ref = useRef(null);
             useEffect(() => {
@@ -70,7 +71,7 @@
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}></span>;
         };
 
-        // --- HJELPEFUNKSJONER ---
+        // --- 3. HJELPEFUNKSJONER ---
         const formatImageUrl = (url) => {
             if (!url) return '';
             let idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
@@ -114,30 +115,16 @@
             document.body.removeChild(link);
         };
 
-        const generateICS = (campaign) => {
+        const downloadICS = (campaign) => {
             const dateStr = campaign.date.replace(/-/g, '');
-            let icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//MeetMax//CampaignManager//NO\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\n`;
-            campaign.tasks.forEach(task => {
-                const config = TASK_TYPES[task.type] || TASK_TYPES['ADMIN'];
-                const timeStr = (task.time || config.defaultTime).replace(':', '') + '00';
-                const startDateTime = `${dateStr}T${timeStr}`;
-                let hour = parseInt(task.time.split(':')[0]);
-                let min = parseInt(task.time.split(':')[1]);
-                if (min >= 30) { hour += 1; min -= 30; } else { min += 30; }
-                const endHour = hour.toString().padStart(2, '0');
-                const endMin = min.toString().padStart(2, '0');
-                const endDateTime = `${dateStr}T${endHour}${endMin}00`;
-                const summary = `${config.label}: ${campaign.title}`;
-                const description = (task.customTitle || campaign.title) + (task.imageUrl ? `\n\nBilde: ${task.imageUrl}` : '');
-                icsContent += `BEGIN:VEVENT\nSUMMARY:${summary}\nDTSTART:${startDateTime}\nDTEND:${endDateTime}\nDESCRIPTION:${description}\nSTATUS:CONFIRMED\nEND:VEVENT\n`;
+            let icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//MeetMax//NO\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\n`;
+            campaign.tasks.forEach(t => {
+                const conf = TASK_TYPES[t.type] || TASK_TYPES['ADMIN'];
+                const timeStr = (t.time || conf.defaultTime).replace(':', '') + '00';
+                icsContent += `BEGIN:VEVENT\nSUMMARY:${conf.label}: ${campaign.title}\nDTSTART:${dateStr}T${timeStr}\nDESCRIPTION:${t.customTitle || campaign.title}\nSTATUS:CONFIRMED\nEND:VEVENT\n`;
             });
             icsContent += "END:VCALENDAR";
-            return icsContent;
-        };
-
-        const downloadICS = (campaign) => {
-            const icsData = generateICS(campaign);
-            const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
             const link = document.createElement('a');
             link.href = window.URL.createObjectURL(blob);
             link.setAttribute('download', `${campaign.title.replace(/\s+/g, '_')}.ics`);
@@ -148,11 +135,10 @@
 
         const parseICS = (icsContent) => {
             const events = [];
-            const lines = icsContent.split(/\r\n|\n|\r/);
             let currentEvent = null;
-            lines.forEach(line => {
-                if (line.startsWith('BEGIN:VEVENT')) { currentEvent = {}; } 
-                else if (line.startsWith('END:VEVENT')) { if (currentEvent) events.push(currentEvent); currentEvent = null; } 
+            icsContent.split(/\r\n|\n|\r/).forEach(line => {
+                if (line.startsWith('BEGIN:VEVENT')) currentEvent = {};
+                else if (line.startsWith('END:VEVENT')) { if (currentEvent) events.push(currentEvent); currentEvent = null; }
                 else if (currentEvent) {
                     const [key, ...valueParts] = line.split(':');
                     const value = valueParts.join(':');
@@ -163,15 +149,10 @@
             return events.map(event => {
                 const rawDate = event.start.split('T')[0]; 
                 const rawTime = event.start.includes('T') ? event.start.split('T')[1].substring(0, 4) : '1200';
-                const year = rawDate.substring(0, 4);
-                const month = rawDate.substring(4, 6);
-                const day = rawDate.substring(6, 8);
-                const hour = rawTime.substring(0, 2);
-                const minute = rawTime.substring(2, 4);
                 return {
-                    title: event.summary || 'Importert hendelse',
-                    date: `${year}-${month}-${day}`,
-                    time: `${hour}:${minute}`,
+                    title: event.summary || 'Importert',
+                    date: `${rawDate.substring(0,4)}-${rawDate.substring(4,6)}-${rawDate.substring(6,8)}`,
+                    time: `${rawTime.substring(0,2)}:${rawTime.substring(2,4)}`,
                     type: 'OTHER'
                 };
             });
@@ -179,19 +160,18 @@
 
         const monthNames = ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Desember"];
 
-        // --- APP KOMPONENT ---
+        // --- 4. HOVEDAPPLIKASJON ---
         const App = () => {
+            // Tilstander (State)
             const [activeTab, setActiveTab] = useState('calendar');
             const [currentDate, setCurrentDate] = useState(new Date()); 
-            
-            // DATA
             const [campaigns, setCampaigns] = useState([]);
             const [kpiData, setKpiData] = useState([]);
             const [loading, setLoading] = useState(true);
             const [saving, setSaving] = useState(false);
             const [isDataLoaded, setIsDataLoaded] = useState(false);
-
-            // MODALS & EDIT
+            
+            // Edit & Modals
             const [modalType, setModalType] = useState(null); 
             const [selectedCampaign, setSelectedCampaign] = useState(null);
             const [editTitle, setEditTitle] = useState('');
@@ -199,30 +179,29 @@
             const [editTasks, setEditTasks] = useState([]); 
             const [activeDay, setActiveDay] = useState(null);
             
-            // GLOBAL ADD
+            // Global Legg Til
             const [globalTaskType, setGlobalTaskType] = useState(null);
             const [globalDate, setGlobalDate] = useState('');
             const [globalTime, setGlobalTime] = useState('');
             const [globalDescription, setGlobalDescription] = useState('');
             const [globalImage, setGlobalImage] = useState(''); 
             
-            // FILTERS
+            // Visning & Filter
             const [visibleTypes, setVisibleTypes] = useState(Object.keys(TASK_TYPES));
-            
-            // PREVIEW
             const [previewImage, setPreviewImage] = useState(null); 
             const [isPreviewLocked, setIsPreviewLocked] = useState(false);
             
-            // --- NYE FILTERS FOR AKTIVITETSLISTE ---
-            const [listFilter, setListFilter] = useState('all'); // 'all', 'pending'
+            // LISTE-VISNING STATES (Nytt i v3.4)
+            const [listFilter, setListFilter] = useState('all'); // 'all' eller 'pending'
             const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-            const [selectedMonths, setSelectedMonths] = useState([new Date().getMonth()]); // Default: Current Month
+            const [selectedMonths, setSelectedMonths] = useState([new Date().getMonth()]); // Default: Inneværende måned
             const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+            const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'ascending' });
 
             const fileInputRef = useRef(null);
             const backupInputRef = useRef(null);
 
-            // LAST DATA
+            // LASTING AV DATA
             const loadData = async () => {
                 setLoading(true);
                 try {
@@ -242,7 +221,11 @@
             const saveData = async (newCampaigns, newKpiData) => {
                 if (!isDataLoaded) return;
                 setSaving(true);
-                const dataToSave = { campaigns: newCampaigns || campaigns, kpiData: newKpiData || kpiData, updatedAt: new Date() };
+                const dataToSave = { 
+                    campaigns: newCampaigns || campaigns, 
+                    kpiData: newKpiData || kpiData, 
+                    updatedAt: new Date() 
+                };
                 try {
                     await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
                         method: 'PUT',
@@ -254,165 +237,197 @@
             };
 
             useEffect(() => { loadData(); }, []);
-            
+
+            // OPPDATERINGSFUNKSJONER
             const updateCampaigns = (newData) => { setCampaigns(newData); saveData(newData, null); };
             const handleAddKpi = (newRow) => { const newData = [...kpiData, newRow]; setKpiData(newData); saveData(null, newData); };
-            const handleDeleteKpi = (id) => { if(confirm('Slett linje?')) { const d = kpiData.filter(i => i.id !== id); setKpiData(d); saveData(null, d); }};
-
-            // FIL OPP-LASTING
-            const handleRestoreBackup = (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const c = JSON.parse(e.target.result);
-                        const cams = Array.isArray(c) ? c : (c.campaigns || []);
-                        const kpis = Array.isArray(c) ? [] : (c.kpiData || []);
-                        if (confirm(`Gjenopprett backup? (${cams.length} kampanjer)`)) {
-                            setCampaigns(cams); setKpiData(kpis); saveData(cams, kpis); setIsDataLoaded(true);
-                        }
-                    } catch (err) { alert("Feil filformat."); }
-                };
-                reader.readAsText(file);
-                event.target.value = null;
+            const handleDeleteKpi = (id) => { 
+                if(confirm('Er du sikker på at du vil slette denne linjen?')) { 
+                    const newData = kpiData.filter(item => item.id !== id); 
+                    setKpiData(newData); 
+                    saveData(null, newData); 
+                }
             };
 
+            // FIL-HÅNDTERING
             const handleFileUpload = (event) => {
-                const file = event.target.files[0];
+                const file = event.target.files[0]; 
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
-                        const evts = parseICS(e.target.result);
-                        const newC = evts.map(e => ({
-                            id: Date.now() + Math.random(), title: e.title, date: e.date, type: 'CAMPAIGN',
-                            tasks: [{ id: Date.now() + Math.random(), type: e.type, time: e.time, completed: false, customTitle: e.title }]
+                        const events = parseICS(e.target.result);
+                        const newCamps = events.map(evt => ({ 
+                            id: Date.now() + Math.random(), 
+                            title: evt.title, 
+                            date: evt.date, 
+                            type: 'CAMPAIGN', 
+                            tasks: [{ id: Date.now() + Math.random(), type: evt.type, time: evt.time, completed: false, customTitle: evt.title }]
                         }));
-                        updateCampaigns([...campaigns, ...newC]);
-                        alert(`Importerte ${newC.length} hendelser!`);
-                    } catch (err) { alert("Kunne ikke lese ICS."); }
+                        updateCampaigns([...campaigns, ...newCamps]); 
+                        alert(`Importerte ${newCamps.length} hendelser!`);
+                    } catch (err) { alert("Kunne ikke lese ICS fil."); }
                 };
-                reader.readAsText(file);
+                reader.readAsText(file); 
                 event.target.value = null; 
             };
 
-            // LOGIKK FOR AKTIVITETSLISTE
+            const handleRestoreBackup = (event) => {
+                const file = event.target.files[0]; 
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const content = JSON.parse(e.target.result);
+                        const cams = Array.isArray(content) ? content : (content.campaigns || []);
+                        const kpis = Array.isArray(content) ? [] : (content.kpiData || []);
+                        if (confirm(`Gjenopprett backup? (${cams.length} kampanjer)`)) { 
+                            setCampaigns(cams); 
+                            setKpiData(kpis); 
+                            saveData(cams, kpis); 
+                            setIsDataLoaded(true); 
+                        }
+                    } catch (err) { alert("Ugyldig backup-fil."); }
+                };
+                reader.readAsText(file); 
+                event.target.value = null;
+            };
+
+            // --- LOGIKK FOR AKTIVITETSLISTE ---
             const uniqueYears = useMemo(() => {
-                const years = new Set([new Date().getFullYear(), new Date().getFullYear() + 1]); // Alltid ha med i år og neste år
-                campaigns.forEach(c => {
-                    if (c.date) years.add(new Date(c.date).getFullYear());
-                });
+                const years = new Set([new Date().getFullYear(), new Date().getFullYear() + 1]);
+                campaigns.forEach(c => { if(c.date) years.add(new Date(c.date).getFullYear()); });
                 return Array.from(years).sort();
             }, [campaigns]);
 
-            const getAllTasks = useMemo(() => {
+            const requestSort = (key) => {
+                let direction = 'ascending';
+                if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+                    direction = 'descending';
+                }
+                setSortConfig({ key, direction });
+            };
+
+            const filteredAndSortedTasks = useMemo(() => {
                 let tasks = [];
+                // 1. Flat ut strukturen (Kampanje -> Oppgaver)
                 campaigns.forEach(c => {
-                    if (c.tasks && c.tasks.length > 0) {
+                    if (c.tasks) {
                         c.tasks.forEach(t => {
-                            tasks.push({ ...t, campaignId: c.id, campaignTitle: c.title, date: c.date, sortKey: c.date + t.time });
+                            tasks.push({ 
+                                ...t, 
+                                campaignId: c.id, 
+                                campaignTitle: c.title, 
+                                date: c.date 
+                            });
                         });
                     }
                 });
-                tasks.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-                return tasks;
-            }, [campaigns]);
 
-            const filteredListTasks = useMemo(() => {
-                return getAllTasks.filter(t => {
+                // 2. Filtrer
+                tasks = tasks.filter(t => {
                     const d = new Date(t.date);
-                    const taskYear = d.getFullYear();
-                    const taskMonth = d.getMonth();
-
-                    // 1. Filtrer på År
-                    if (taskYear !== selectedYear) return false;
-
-                    // 2. Filtrer på Måned (Hvis ingen valgt -> Vis alle i året)
-                    if (selectedMonths.length > 0 && !selectedMonths.includes(taskMonth)) return false;
-
-                    // 3. Filtrer på Status
+                    if (d.getFullYear() !== selectedYear) return false;
+                    if (selectedMonths.length > 0 && !selectedMonths.includes(d.getMonth())) return false;
                     if (listFilter === 'pending' && t.completed) return false;
-
                     return true;
                 });
-            }, [getAllTasks, selectedYear, selectedMonths, listFilter]);
 
-            const toggleMonthSelection = (monthIndex) => {
-                setSelectedMonths(prev => {
-                    if (prev.includes(monthIndex)) return prev.filter(m => m !== monthIndex);
-                    return [...prev, monthIndex];
+                // 3. Sorter
+                tasks.sort((a, b) => {
+                    let aVal = '', bVal = '';
+                    
+                    if (sortConfig.key === 'date') { aVal = a.date + a.time; bVal = b.date + b.time; }
+                    else if (sortConfig.key === 'type') { aVal = (TASK_TYPES[a.type]||TASK_TYPES['ADMIN']).label; bVal = (TASK_TYPES[b.type]||TASK_TYPES['ADMIN']).label; }
+                    else if (sortConfig.key === 'campaignTitle') { aVal = a.campaignTitle.toLowerCase(); bVal = b.campaignTitle.toLowerCase(); }
+                    else if (sortConfig.key === 'customTitle') { aVal = (a.customTitle||'').toLowerCase(); bVal = (b.customTitle||'').toLowerCase(); }
+                    else if (sortConfig.key === 'status') { aVal = a.completed ? 1 : 0; bVal = b.completed ? 1 : 0; }
+
+                    if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                    if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                    return 0;
                 });
+
+                return tasks;
+            }, [campaigns, selectedYear, selectedMonths, listFilter, sortConfig]);
+
+            const copyList = () => {
+                const text = "Dato\tTid\tAktivitet\tBeskrivelse\tStatus\n" + 
+                    filteredAndSortedTasks.map(t => `${t.date}\t${t.time}\t${t.campaignTitle}\t${t.customTitle||'-'}\t${t.completed?'Ferdig':'Åpen'}`).join('\n');
+                navigator.clipboard.writeText(text).then(() => alert("Listen er kopiert!"));
+            };
+
+            // --- REDIGERING OG MODALER ---
+            const handleEditClick = (campaign) => { 
+                setSelectedCampaign(campaign); 
+                setEditTitle(campaign.title); 
+                setEditDate(campaign.date); 
+                setEditTasks(JSON.parse(JSON.stringify(campaign.tasks||[]))); 
+                setModalType('edit'); 
             };
             
-            const clearMonthSelection = () => setSelectedMonths([]);
-
-            const copyListToClipboard = () => {
-                const header = "Dato\tTid\tAktivitet\tBeskrivelse\tStatus";
-                const rows = filteredListTasks.map(t => {
-                    const status = t.completed ? "Ferdig" : "Åpen";
-                    return `${t.date}\t${t.time}\t${t.campaignTitle}\t${t.customTitle || ''}\t${status}`;
-                }).join('\n');
-                navigator.clipboard.writeText(`${header}\n${rows}`).then(() => alert("Liste kopiert!"));
-            };
-
-            // LOGIKK FOR KALENDER EDIT/ADD
-            const handleEditClick = (c) => { setSelectedCampaign(c); setEditTitle(c.title); setEditDate(c.date); setEditTasks(JSON.parse(JSON.stringify(c.tasks||[]))); setModalType('edit'); };
-            const confirmEdit = () => {
-                if (selectedCampaign && editTitle && editDate) {
-                    updateCampaigns(campaigns.map(c => c.id === selectedCampaign.id ? { ...c, title: editTitle, date: editDate, tasks: editTasks } : c));
-                    setModalType(null);
+            const confirmEdit = () => { 
+                if (selectedCampaign && editTitle && editDate) { 
+                    updateCampaigns(campaigns.map(c => c.id === selectedCampaign.id ? { ...c, title: editTitle, date: editDate, tasks: editTasks } : c)); 
+                    setModalType(null); 
                 }
             };
-            const toggleTask = (cid, tid) => {
-                updateCampaigns(campaigns.map(c => c.id === cid ? { ...c, tasks: (c.tasks||[]).map(t => t.id === tid ? { ...t, completed: !t.completed } : t) } : c));
+            
+            const toggleTask = (campaignId, taskId) => { 
+                updateCampaigns(campaigns.map(c => c.id === campaignId ? { ...c, tasks: (c.tasks||[]).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t) } : c)); 
             };
+            
             const handleTaskTimeChange = (id, val) => setEditTasks(prev => prev.map(t => t.id === id ? { ...t, time: val } : t));
             const handleTaskImageChange = (id, val) => setEditTasks(prev => prev.map(t => t.id === id ? { ...t, imageUrl: val } : t));
-            
-            const handleLegendAddClick = (type) => {
-                setGlobalTaskType(type);
-                setGlobalTime(TASK_TYPES[type].defaultTime);
-                setGlobalDescription(TASK_TYPES[type].label);
-                setGlobalImage('');
-                const now = new Date();
-                setGlobalDate(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`);
-                setModalType('addGlobalTask');
+
+            // --- LEGG TIL NY AKTIVITET (GLOBAL) ---
+            const handleLegendAdd = (type) => { 
+                setGlobalTaskType(type); 
+                setGlobalTime(TASK_TYPES[type].defaultTime); 
+                setGlobalDescription(TASK_TYPES[type].label); 
+                setGlobalImage(''); 
+                setGlobalDate(new Date().toISOString().split('T')[0]); 
+                setModalType('addGlobalTask'); 
             };
-            const confirmGlobalAdd = () => {
-                if (!globalTaskType || !globalDate) return;
-                const newTask = { id: Date.now()+'_'+Math.random(), type: globalTaskType, time: globalTime, completed: false, customTitle: globalDescription, imageUrl: globalImage };
-                updateCampaigns([...campaigns, { id: Date.now(), title: globalDescription, date: globalDate, type: 'CAMPAIGN', tasks: [newTask] }]);
-                setModalType(null);
+            
+            const confirmGlobalAdd = () => { 
+                if (globalTaskType && globalDate) { 
+                    const newTask = { id: Date.now()+'_'+Math.random(), type: globalTaskType, time: globalTime, completed: false, customTitle: globalDescription, imageUrl: globalImage };
+                    updateCampaigns([...campaigns, { id: Date.now(), title: globalDescription, date: globalDate, type: 'CAMPAIGN', tasks: [newTask] }]); 
+                    setModalType(null); 
+                }
             };
 
+            // --- KALENDER RENDERING ---
             const renderCalendar = () => {
                 const year = currentDate.getFullYear();
                 const month = currentDate.getMonth();
-                const daysNum = new Date(year, month + 1, 0).getDate();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
                 const firstDay = new Date(year, month, 1).getDay();
-                const startEmpty = firstDay === 0 ? 6 : firstDay - 1;
+                const startEmptyDays = firstDay === 0 ? 6 : firstDay - 1;
                 const days = [];
 
-                for (let i = 0; i < startEmpty; i++) days.push(<div key={`empty-${i}`} className="h-60 bg-slate-50 border border-slate-100"></div>);
+                for (let i = 0; i < startEmptyDays; i++) {
+                    days.push(<div key={`empty-${i}`} className="h-60 bg-slate-50 border border-slate-100"></div>);
+                }
 
-                for (let d = 1; d <= daysNum; d++) {
+                for (let d = 1; d <= daysInMonth; d++) {
                     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     const dayCamps = campaigns.filter(c => c.date === dateStr);
                     const visibleDayCamps = dayCamps.filter(c => (!c.tasks || c.tasks.length === 0) || c.tasks.some(t => visibleTypes.includes(t.type || 'ADMIN')));
                     const allDone = visibleDayCamps.length > 0 && visibleDayCamps.every(c => (c.tasks||[]).filter(t => visibleTypes.includes(t.type||'ADMIN')).every(t => t.completed));
                     const isToday = new Date().toDateString() === new Date(year, month, d).toDateString();
                     
-                    let bg = "bg-white border-slate-200";
-                    if (allDone) bg = "bg-emerald-50 border-emerald-300";
-                    else if (isToday) bg = "bg-blue-50 border-blue-400";
+                    let bgClass = "bg-white border-slate-200";
+                    if (allDone) bgClass = "bg-emerald-50 border-emerald-300";
+                    else if (isToday) bgClass = "bg-blue-50 border-blue-400";
 
                     days.push(
-                        <div key={d} className={`h-60 border p-2 relative group hover:shadow-md transition-all ${bg}`}>
+                        <div key={d} className={`h-60 border p-2 relative group hover:shadow-md transition-all ${bgClass}`}>
                             <div className="flex justify-between items-start mb-2 mt-4">
                                 <div>
                                     <span className={`text-sm font-bold ${HOLIDAYS[dateStr] ? 'text-red-600' : isToday ? 'text-blue-600' : 'text-slate-700'}`}>{d}</span>
-                                    {allDone && <Icon name="check-circle" size={14} color="text-emerald-500" className="ml-1 inline"/>}
+                                    {allDone && <Icon name="check-circle" size={14} className="ml-1 inline text-emerald-500"/>}
                                     {HOLIDAYS[dateStr] && <div className="text-[10px] text-red-500 leading-tight">{HOLIDAYS[dateStr]}</div>}
                                     {COMMERCIAL_DAYS[dateStr] && <div className="text-[10px] text-blue-600 leading-tight">{COMMERCIAL_DAYS[dateStr]}</div>}
                                 </div>
@@ -420,20 +435,27 @@
                             </div>
                             <div className="space-y-2 overflow-y-auto max-h-[160px] custom-scrollbar">
                                 {visibleDayCamps.map(c => (
-                                    <div key={c.id} className={`p-2 rounded border shadow-sm bg-white text-xs ${allDone?'opacity-70':''} group/card relative`}>
+                                    <div key={c.id} className="p-2 rounded border shadow-sm bg-white text-xs group/card relative">
                                         <div className="font-bold text-slate-800 mb-1 border-b pb-1 flex justify-between">
                                             <span onClick={() => handleEditClick(c)} className="cursor-pointer hover:text-indigo-600 truncate flex-1">{c.title}</span>
-                                            <button onClick={(e) => {e.stopPropagation(); downloadICS(c);}} className="opacity-0 group-hover/card:opacity-100 text-slate-400 hover:text-indigo-500"><Icon name="download" size={12}/></button>
+                                            <button onClick={(e) => { e.stopPropagation(); downloadICS(c); }} className="opacity-0 group-hover/card:opacity-100 text-slate-400"><Icon name="download" size={12}/></button>
                                         </div>
                                         <div>
-                                            {(c.tasks||[]).filter(t => visibleTypes.includes(t.type||'ADMIN')).map(t => {
-                                                const conf = TASK_TYPES[t.type]||TASK_TYPES['ADMIN'];
+                                            {(c.tasks||[]).filter(t => visibleTypes.includes(t.type || 'ADMIN')).map(t => {
+                                                const conf = TASK_TYPES[t.type] || TASK_TYPES['ADMIN'];
                                                 const img = formatImageUrl(t.imageUrl);
                                                 return (
-                                                    <div key={t.id} onClick={() => toggleTask(c.id, t.id)} className={`flex items-center gap-2 cursor-pointer mt-1 ${t.completed?'opacity-50 line-through':''}`}>
+                                                    <div key={t.id} onClick={() => toggleTask(c.id, t.id)} className={`flex items-center gap-2 cursor-pointer mt-1 ${t.completed ? 'opacity-50 line-through' : ''}`}>
                                                         <Icon name={conf.icon} size={12} color={conf.color.split(' ')[0]} />
                                                         <span className="truncate flex-1">{t.time}</span>
-                                                        {img && <div className="p-1 z-10" onClick={(e)=>{e.stopPropagation(); setPreviewImage(img); setIsPreviewLocked(true);}} onMouseEnter={()=>!window.matchMedia("(pointer:coarse)").matches && setPreviewImage(img)} onMouseLeave={()=>!window.matchMedia("(pointer:coarse)").matches && !isPreviewLocked && setPreviewImage(null)}><Icon name="camera" size={12} color="text-slate-400"/></div>}
+                                                        {img && (
+                                                            <div className="p-1 z-10" 
+                                                                 onClick={(e) => { e.stopPropagation(); setPreviewImage(img); setIsPreviewLocked(true); }}
+                                                                 onMouseEnter={() => !window.matchMedia("(pointer:coarse)").matches && setPreviewImage(img)}
+                                                                 onMouseLeave={() => !window.matchMedia("(pointer:coarse)").matches && !isPreviewLocked && setPreviewImage(null)}>
+                                                                <Icon name="camera" size={12} className="text-slate-400"/>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
@@ -451,238 +473,302 @@
 
             return (
                 <div className="max-w-7xl mx-auto p-4 bg-slate-50 min-h-screen">
-                    {/* GLOBAL PREVIEW */}
+                    {/* Bilde Preview Modal */}
                     {previewImage && (
-                        <div className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-[fade-in_0.2s] ${isPreviewLocked ? 'cursor-pointer pointer-events-auto' : 'pointer-events-none'}`} onClick={() => { setPreviewImage(null); setIsPreviewLocked(false); }}>
-                            <div className="relative max-w-4xl max-h-[90vh]">
-                                <img src={previewImage} alt="Preview" className="w-full h-full object-contain rounded-lg shadow-2xl" />
-                                {isPreviewLocked && <p className="text-white text-center mt-2 text-sm">Trykk hvor som helst for å lukke</p>}
-                            </div>
+                        <div className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm ${isPreviewLocked ? 'pointer-events-auto' : 'pointer-events-none'}`} 
+                             onClick={() => { setPreviewImage(null); setIsPreviewLocked(false); }}>
+                            <img src={previewImage} className="max-w-4xl max-h-[90vh] object-contain rounded-lg shadow-2xl"/>
                         </div>
                     )}
 
-                    {/* MODALER */}
+                    {/* Hoved Modaler (Edit, Add, Delete) */}
                     {modalType && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                             <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm">
                                 {modalType === 'addGlobalTask' && (
                                     <>
-                                        <h3 className="font-bold text-lg mb-4">Legg til {TASK_TYPES[globalTaskType]?.label}</h3>
+                                        <h3 className="font-bold text-lg mb-4">Legg til {(TASK_TYPES[globalTaskType] || {}).label}</h3>
                                         <div className="space-y-4">
-                                            <div><label className="text-xs font-bold text-slate-500">Beskrivelse</label><input className="w-full border p-2 rounded" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} /></div>
-                                            <div><label className="text-xs font-bold text-slate-500">Bilde-URL</label><input className="w-full border p-2 rounded" value={globalImage} onChange={e => setGlobalImage(e.target.value)} /></div>
-                                            <div><label className="text-xs font-bold text-slate-500">Dato</label><input type="date" className="w-full border p-2 rounded" value={globalDate} onChange={e => setGlobalDate(e.target.value)} /></div>
-                                            <div><label className="text-xs font-bold text-slate-500">Tid</label><input type="time" className="w-full border p-2 rounded" value={globalTime} onChange={e => setGlobalTime(e.target.value)} /></div>
-                                            <div className="flex justify-end gap-2"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button><button onClick={confirmGlobalAdd} className="px-4 py-2 bg-indigo-600 text-white rounded">Legg til</button></div>
+                                            <input className="w-full border p-2 rounded" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} placeholder="Beskrivelse" />
+                                            <input className="w-full border p-2 rounded" value={globalImage} onChange={e => setGlobalImage(e.target.value)} placeholder="Bilde URL" />
+                                            <input type="date" className="w-full border p-2 rounded" value={globalDate} onChange={e => setGlobalDate(e.target.value)} />
+                                            <input type="time" className="w-full border p-2 rounded" value={globalTime} onChange={e => setGlobalTime(e.target.value)} />
+                                            <div className="flex justify-end gap-2">
+                                                <button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button>
+                                                <button onClick={confirmGlobalAdd} className="px-4 py-2 bg-indigo-600 text-white rounded">Legg til</button>
+                                            </div>
                                         </div>
                                     </>
                                 )}
-                                {modalType === 'edit' && (<><h3 className="font-bold text-lg mb-4">Rediger</h3><div className="space-y-4 mb-4"><div><label className="text-xs font-bold text-slate-500">Tittel</label><input className="w-full border p-2 rounded" value={editTitle} onChange={e => setEditTitle(e.target.value)} /></div><div><label className="text-xs font-bold text-slate-500">Dato</label><input type="date" className="w-full border p-2 rounded" value={editDate} onChange={e => setEditDate(e.target.value)} /></div><div><label className="text-xs font-bold text-slate-500 mb-1">Oppgaver</label><div className="max-h-40 overflow-y-auto border border-slate-100 rounded p-1">{editTasks.map(task => { const conf = TASK_TYPES[task.type]||TASK_TYPES['ADMIN']; return (<div key={task.id} className="mb-2 p-2 bg-slate-50 rounded border border-slate-200"><div className="flex items-center gap-2 mb-1"><Icon name={conf.icon} size={14} color={conf.color.split(' ')[0]} /><span className="text-xs font-bold">{conf.label}</span></div><div className="flex gap-2"><input type="time" value={task.time} onChange={(e) => handleTaskTimeChange(task.id, e.target.value)} className="border rounded px-1 py-0.5 text-xs w-16"/><input type="text" value={task.imageUrl||''} onChange={(e) => handleTaskImageChange(task.id, e.target.value)} className="border rounded px-1 py-0.5 text-xs flex-1" placeholder="URL..."/></div></div>);})}</div></div></div><div className="flex justify-end gap-2"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button><button onClick={confirmEdit} className="px-4 py-2 bg-indigo-600 text-white rounded">Lagre</button></div></>)}
-                                {modalType === 'manageDay' && (<><h3 className="font-bold text-lg mb-4">Slett</h3><div className="max-h-60 overflow-y-auto space-y-2 mb-4">{campaigns.filter(c => c.date === `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(activeDay).padStart(2,'0')}`).map(c => (<div key={c.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border"><span>{c.title}</span><button onClick={() => updateCampaigns(campaigns.filter(x => x.id !== c.id))} className="text-red-500 text-sm font-bold">SLETT</button></div>))}</div><div className="flex justify-end"><button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Lukk</button></div></>)}
+                                {modalType === 'edit' && (
+                                    <>
+                                        <h3 className="font-bold text-lg mb-4">Rediger</h3>
+                                        <div className="space-y-4 mb-4">
+                                            <input className="w-full border p-2 rounded" value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Tittel" />
+                                            <input type="date" className="w-full border p-2 rounded" value={editDate} onChange={e => setEditDate(e.target.value)} />
+                                            <div className="max-h-40 overflow-y-auto border border-slate-100 rounded p-1">
+                                                {editTasks.map(t => (
+                                                    <div key={t.id} className="mb-2 p-2 bg-slate-50 rounded border flex flex-col gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <Icon name={(TASK_TYPES[t.type] || TASK_TYPES['ADMIN']).icon} size={14} />
+                                                            <span className="text-xs font-bold">{(TASK_TYPES[t.type] || TASK_TYPES['ADMIN']).label}</span>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <input type="time" value={t.time} onChange={e => handleTaskTimeChange(t.id, e.target.value)} className="border rounded px-1 text-xs w-16"/>
+                                                            <input value={t.imageUrl || ''} onChange={e => handleTaskImageChange(t.id, e.target.value)} className="border rounded px-1 text-xs flex-1" placeholder="URL"/>
+                                                        </div>
+                                                        <input value={t.customTitle || ''} onChange={e => setEditTasks(prev => prev.map(x => x.id === t.id ? { ...x, customTitle: e.target.value } : x))} className="border rounded px-1 text-xs w-full" placeholder="Beskrivelse"/>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end gap-2">
+                                            <button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Avbryt</button>
+                                            <button onClick={confirmEdit} className="px-4 py-2 bg-indigo-600 text-white rounded">Lagre</button>
+                                        </div>
+                                    </>
+                                )}
+                                {modalType === 'manageDay' && (
+                                    <>
+                                        <h3 className="font-bold text-lg mb-4">Slett</h3>
+                                        <div className="max-h-60 overflow-y-auto space-y-2 mb-4">
+                                            {campaigns.filter(c => c.date === `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(activeDay).padStart(2, '0')}`).map(c => (
+                                                <div key={c.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border">
+                                                    <span>{c.title}</span>
+                                                    <button onClick={() => updateCampaigns(campaigns.filter(x => x.id !== c.id))} className="text-red-500 text-sm font-bold">SLETT</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="flex justify-end">
+                                            <button onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 rounded">Lukk</button>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}
 
-                    {/* TOP BAR */}
+                    {/* TOPP-MENY / HEADER */}
                     <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
                         <div className="mb-4 md:mb-0">
-                            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-3"><span className="bg-indigo-600 text-white p-2 rounded-lg"><Icon name="calendar" size={24}/></span> MeetMax Manager</h1>
+                            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+                                <span className="bg-indigo-600 text-white p-2 rounded-lg"><Icon name="calendar" size={24}/></span> 
+                                MeetMax Manager
+                            </h1>
                             <div className="flex items-center gap-3 mt-1 ml-1">
                                 <p className="text-slate-500 text-sm">Oversikt for <span className="font-semibold text-indigo-600">Me & Max</span></p>
-                                {saving ? <span className="text-xs text-orange-500 flex items-center gap-1"><Icon name="loader-2" size={10} className="animate-spin"/> Lagrer...</span> : <span className="text-xs text-green-600 flex items-center gap-1"><Icon name="cloud" size={10} /> Online</span>}
+                                {saving ? <span className="text-xs text-orange-500 flex items-center gap-1">Lagrer...</span> : <span className="text-xs text-green-600 flex items-center gap-1">Online</span>}
                             </div>
                         </div>
-                        
                         <div className="flex gap-2 mr-auto ml-4">
-                             <button onClick={() => downloadBackup({ campaigns, kpiData })} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1"><Icon name="download" size={12}/> Backup</button>
-                             <button onClick={() => downloadCSV(campaigns)} className="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-3 py-1 rounded flex items-center gap-1"><Icon name="file-spreadsheet" size={12}/> CSV</button>
-                             <label className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1 rounded flex items-center gap-1 cursor-pointer">
-                                <Icon name="upload" size={12}/> Restore <input type="file" accept=".json" className="hidden" ref={backupInputRef} onChange={handleRestoreBackup} />
-                             </label>
+                            <button onClick={() => downloadBackup({ campaigns, kpiData })} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded flex gap-1"><Icon name="download" size={12}/> Backup</button>
+                            <button onClick={() => downloadCSV(campaigns)} className="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-3 py-1 rounded flex gap-1"><Icon name="file-spreadsheet" size={12}/> CSV</button>
+                            <label className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded flex gap-1 cursor-pointer">
+                                <Icon name="upload" size={12}/> Restore 
+                                <input type="file" className="hidden" ref={backupInputRef} onChange={handleRestoreBackup}/>
+                            </label>
                         </div>
-
-                        <div className="bg-slate-100 p-1 rounded-lg flex items-center">
+                        <div className="bg-slate-100 p-1 rounded-lg flex">
                             <button onClick={() => setActiveTab('calendar')} className={`px-4 py-2 rounded text-sm font-bold ${activeTab === 'calendar' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Kalender</button>
                             <button onClick={() => setActiveTab('activities')} className={`px-4 py-2 rounded text-sm font-bold ${activeTab === 'activities' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Vis Aktiviteter</button>
                             <button onClick={() => setActiveTab('analysis')} className={`px-4 py-2 rounded text-sm font-bold ${activeTab === 'analysis' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Analyse</button>
                         </div>
                     </div>
 
-                    {/* CONTENT - KALENDER */}
+                    {/* FANE 1: KALENDER */}
                     {activeTab === 'calendar' && (
                         <div className="animate-[fade-in_0.2s]">
                             <div className="flex justify-between items-end mb-4">
                                 <div className="hidden md:block">
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Månedens Fremdrift</span>
-                                    <div className="flex items-center gap-3 mt-1">
-                                        <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 transition-all duration-500" style={{width: `${(campaigns.filter(c=>c.date.startsWith(`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}`)).reduce((a,c)=>a+(c.tasks||[]).filter(t=>t.completed&&visibleTypes.includes(t.type||'ADMIN')).length,0) / (campaigns.filter(c=>c.date.startsWith(`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}`)).reduce((a,c)=>a+(c.tasks||[]).filter(t=>visibleTypes.includes(t.type||'ADMIN')).length,0) || 1)) * 100}%`}}></div></div>
+                                    <span className="text-xs font-bold text-slate-400 uppercase">Månedens Fremdrift</span>
+                                    <div className="w-32 h-2 bg-slate-200 rounded-full mt-1">
+                                        <div className="h-full bg-emerald-500 transition-all" 
+                                             style={{ width: `${(campaigns.filter(c => c.date.startsWith(`${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`)).reduce((a, c) => a + (c.tasks || []).filter(t => t.completed && visibleTypes.includes(t.type || 'ADMIN')).length, 0) / (campaigns.filter(c => c.date.startsWith(`${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`)).reduce((a, c) => a + (c.tasks || []).filter(t => visibleTypes.includes(t.type || 'ADMIN')).length, 0) || 1)) * 100}%` }}>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    <label className="flex items-center gap-2 bg-white p-2 rounded shadow-sm cursor-pointer hover:bg-slate-50 text-sm font-medium text-slate-600">
-                                        <Icon name="upload" size={16} /> <span>Import .ics</span>
-                                        <input type="file" accept=".ics" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+                                    <label className="flex gap-2 bg-white p-2 rounded shadow-sm cursor-pointer hover:bg-slate-50 text-sm text-slate-600">
+                                        <Icon name="upload" size={16}/><span>Import .ics</span>
+                                        <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileUpload}/>
                                     </label>
-                                    <div className="flex items-center gap-2 bg-white p-2 rounded shadow-sm">
-                                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}><Icon name="chevron-left" /></button>
+                                    <div className="flex gap-2 bg-white p-2 rounded shadow-sm">
+                                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}><Icon name="chevron-left"/></button>
                                         <span className="font-bold w-32 text-center">{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</span>
-                                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}><Icon name="chevron-right" /></button>
+                                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}><Icon name="chevron-right"/></button>
                                     </div>
                                 </div>
                             </div>
                             
-                            <div className="grid grid-cols-7 gap-px bg-slate-200 border rounded-t overflow-hidden">
+                            <div className="grid grid-cols-7 gap-px bg-slate-200 border rounded-t">
                                 {['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'].map(d => <div key={d} className="bg-white p-2 text-center font-bold text-xs text-slate-500 uppercase">{d}</div>)}
                             </div>
-                            <div className="grid grid-cols-7 gap-px bg-slate-200 border-x border-b rounded-b overflow-hidden shadow-sm">
+                            <div className="grid grid-cols-7 gap-px bg-slate-200 border-x border-b rounded-b shadow-sm">
                                 {renderCalendar()}
                             </div>
 
+                            {/* KNAPPERAD KALENDER */}
                             <div className="mt-8 flex flex-wrap gap-4 justify-center">
-                                {Object.entries(TASK_TYPES).map(([key, conf]) => (
-                                    <div key={key} className="flex items-center bg-white rounded-full border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-all">
-                                        <button onClick={() => setVisibleTypes(p => p.includes(key) ? p.filter(t=>t!==key) : [...p, key])} className={`flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 ${!visibleTypes.includes(key)?'opacity-40 grayscale':''}`}>
-                                            <div className={`w-3 h-3 rounded border flex items-center justify-center ${visibleTypes.includes(key)?'bg-indigo-600 border-transparent':'border-slate-400 bg-transparent'}`}>{visibleTypes.includes(key)&&<Icon name="check" size={8} className="text-white"/>}</div>
-                                            <Icon name={conf.icon} color={conf.color.split(' ')[0]} size={14} /><span className="font-medium text-sm text-slate-700">{conf.label}</span>
+                                {Object.entries(TASK_TYPES).map(([k, c]) => (
+                                    <div key={k} className="flex items-center bg-white rounded-full border border-slate-200 shadow-sm overflow-hidden">
+                                        <button onClick={() => setVisibleTypes(p => p.includes(k) ? p.filter(t => t !== k) : [...p, k])} className={`flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 ${!visibleTypes.includes(k) ? 'opacity-40 grayscale' : ''}`}>
+                                            <div className={`w-3 h-3 rounded border flex items-center justify-center ${visibleTypes.includes(k) ? 'bg-indigo-600 border-transparent' : 'border-slate-400 bg-transparent'}`}>
+                                                {visibleTypes.includes(k) && <Icon name="check" size={8} className="text-white"/>}
+                                            </div>
+                                            <Icon name={c.icon} color={c.color.split(' ')[0]} size={14}/>
+                                            <span className="font-medium text-sm text-slate-700">{c.label}</span>
                                         </button>
                                         <div className="w-px h-4 bg-slate-200"></div>
-                                        <button onClick={() => handleLegendAddClick(key)} className="px-2 py-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600"><Icon name="plus" size={14} /></button>
+                                        <button onClick={() => handleLegendAdd(k)} className="px-2 py-1.5 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600">
+                                            <Icon name="plus" size={14}/>
+                                        </button>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
 
-                    {/* CONTENT - AKTIVITETSLISTE */}
+                    {/* FANE 2: AKTIVITETSLISTE (The Cockpit) */}
                     {activeTab === 'activities' && (
-                        <div className="animate-[fade-in_0.2s]">
-                            <div className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
-                                {/* TOOLBAR */}
-                                <div className="p-4 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-slate-50">
+                        <div className="animate-[fade-in_0.2s] bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+                            {/* Toolbar: Filter og Kopier */}
+                            <div className="p-4 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-slate-50">
+                                <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+                                    <select value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg p-2.5 font-bold">
+                                        {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                    </select>
                                     
-                                    {/* FILTERS VENSTRE SIDE */}
-                                    <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
-                                        
-                                        {/* ÅR VELGER */}
-                                        <select 
-                                            value={selectedYear} 
-                                            onChange={(e) => setSelectedYear(parseInt(e.target.value))} 
-                                            className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg p-2.5 focus:ring-indigo-500 focus:border-indigo-500 font-bold"
-                                        >
-                                            {uniqueYears.map(year => <option key={year} value={year}>{year}</option>)}
-                                        </select>
-
-                                        {/* MÅNED VELGER (Dropdown med Checkboxes) */}
-                                        <div className="relative">
-                                            <button 
-                                                onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
-                                                className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg p-2.5 flex items-center gap-2 font-bold min-w-[150px] justify-between"
-                                            >
-                                                <span>{selectedMonths.length === 0 ? "Hele året" : selectedMonths.length === 1 ? monthNames[selectedMonths[0]] : `${selectedMonths.length} valgt`}</span>
-                                                <Icon name="chevron-down" size={16} />
-                                            </button>
-                                            
-                                            {isMonthPickerOpen && (
-                                                <>
-                                                    <div className="fixed inset-0 z-10" onClick={() => setIsMonthPickerOpen(false)}></div>
-                                                    <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 p-2 max-h-[400px] overflow-y-auto">
-                                                        <div className="flex justify-between items-center mb-2 px-2">
-                                                            <span className="text-xs font-bold text-slate-500 uppercase">Velg måneder</span>
-                                                            <button onClick={clearMonthSelection} className="text-xs text-indigo-600 hover:text-indigo-800">Nullstill</button>
-                                                        </div>
-                                                        <div className="grid grid-cols-1 gap-1">
-                                                            {monthNames.map((m, idx) => (
-                                                                <label key={idx} className="flex items-center cursor-pointer hover:bg-slate-50 rounded p-1">
-                                                                    <input 
-                                                                        type="checkbox" 
-                                                                        checked={selectedMonths.includes(idx)} 
-                                                                        onChange={() => toggleMonthSelection(idx)}
-                                                                        className="month-checkbox hidden"
-                                                                    />
-                                                                    <div className={`w-4 h-4 mr-2 border rounded flex items-center justify-center ${selectedMonths.includes(idx) ? 'bg-indigo-600 border-transparent' : 'border-slate-300 bg-white'}`}>
-                                                                        {selectedMonths.includes(idx) && <Icon name="check" size={10} className="text-white"/>}
-                                                                    </div>
-                                                                    <span className={`text-sm ${selectedMonths.includes(idx) ? 'font-bold text-indigo-700' : 'text-slate-700'}`}>{m}</span>
-                                                                </label>
-                                                            ))}
-                                                        </div>
+                                    <div className="relative">
+                                        <button onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)} className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg p-2.5 flex items-center gap-2 font-bold min-w-[150px] justify-between">
+                                            <span>{selectedMonths.length === 0 ? "Hele året" : selectedMonths.length === 1 ? monthNames[selectedMonths[0]] : `${selectedMonths.length} valgt`}</span>
+                                            <Icon name="chevron-down" size={16}/>
+                                        </button>
+                                        {isMonthPickerOpen && (
+                                            <>
+                                                <div className="fixed inset-0 z-10" onClick={() => setIsMonthPickerOpen(false)}></div>
+                                                <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 p-2 max-h-[400px] overflow-y-auto">
+                                                    <div className="flex justify-between items-center mb-2 px-2">
+                                                        <span className="text-xs font-bold text-slate-500 uppercase">Velg måneder</span>
+                                                        <button onClick={() => setSelectedMonths([])} className="text-xs text-indigo-600 hover:text-indigo-800">Nullstill</button>
                                                     </div>
-                                                </>
-                                            )}
-                                        </div>
-
-                                        {/* STATUS FILTER */}
-                                        <div className="flex bg-white rounded-lg p-1 border shadow-sm ml-2">
-                                            <button onClick={() => setListFilter('all')} className={`px-3 py-1.5 text-xs font-bold rounded ${listFilter==='all'?'bg-indigo-100 text-indigo-700':'text-slate-500 hover:bg-slate-50'}`}>Alle</button>
-                                            <button onClick={() => setListFilter('pending')} className={`px-3 py-1.5 text-xs font-bold rounded ${listFilter==='pending'?'bg-indigo-100 text-indigo-700':'text-slate-500 hover:bg-slate-50'}`}>Kun åpne</button>
-                                        </div>
+                                                    <div className="grid grid-cols-1 gap-1">
+                                                        {monthNames.map((m, i) => (
+                                                            <label key={i} className="flex items-center cursor-pointer hover:bg-slate-50 rounded p-1">
+                                                                <input type="checkbox" checked={selectedMonths.includes(i)} onChange={() => setSelectedMonths(p => p.includes(i) ? p.filter(x => x !== i) : [...p, i])} className="month-checkbox hidden"/>
+                                                                <div className={`w-4 h-4 mr-2 border rounded flex items-center justify-center ${selectedMonths.includes(i) ? 'bg-indigo-600 border-transparent' : 'border-slate-300 bg-white'}`}>
+                                                                    {selectedMonths.includes(i) && <Icon name="check" size={10} className="text-white"/>}
+                                                                </div>
+                                                                <span className={`text-sm ${selectedMonths.includes(i) ? 'font-bold text-indigo-700' : 'text-slate-700'}`}>{m}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                     
-                                    {/* HØYRE SIDE - KOPIER */}
-                                    <button onClick={copyListToClipboard} className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 active:scale-95 transition-all shadow-sm whitespace-nowrap">
-                                        <Icon name="copy" size={14} /> Kopier liste
-                                    </button>
+                                    <div className="flex bg-white rounded-lg p-1 border shadow-sm ml-2">
+                                        <button onClick={() => setListFilter('all')} className={`px-3 py-1.5 text-xs font-bold rounded ${listFilter === 'all' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}>Alle</button>
+                                        <button onClick={() => setListFilter('pending')} className={`px-3 py-1.5 text-xs font-bold rounded ${listFilter === 'pending' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}>Kun åpne</button>
+                                    </div>
                                 </div>
                                 
-                                {/* TABLE */}
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-slate-200">
-                                        <thead className="bg-slate-50">
-                                            <tr>
-                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Dato</th>
-                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Tid</th>
-                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Type</th>
-                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Aktivitet</th>
-                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Beskrivelse</th>
-                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Info</th>
-                                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-slate-200">
-                                            {filteredListTasks.length === 0 ? (
-                                                <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400">Ingen aktiviteter funnet med dette filteret.</td></tr>
-                                            ) : (
-                                                filteredListTasks.map((task, idx) => {
-                                                    const config = TASK_TYPES[task.type] || TASK_TYPES['ADMIN'];
-                                                    const hasLink = !!task.imageUrl;
-                                                    const isOverdue = !task.completed && new Date(task.date) < new Date(new Date().setHours(0,0,0,0));
-                                                    
-                                                    return (
-                                                        <tr key={`${task.id}-${idx}`} className="hover:bg-slate-50 group transition-colors">
-                                                            <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-slate-900'}`}>{task.date}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{task.time}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap"><div className="flex items-center gap-2"><Icon name={config.icon} size={14} color={config.color.split(' ')[0]} /><span className="text-sm text-slate-700">{config.label}</span></div></td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 font-bold">{task.campaignTitle}</td>
-                                                            <td className="px-6 py-4 text-sm text-slate-600 max-w-xs truncate" title={task.customTitle}>{task.customTitle || '-'}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                                                {hasLink && (
-                                                                    <button onClick={() => { setPreviewImage(formatImageUrl(task.imageUrl)); setIsPreviewLocked(true); }} className="text-indigo-500 hover:text-indigo-700 hover:scale-110 transition-transform">
-                                                                        <Icon name="paperclip" size={16} />
-                                                                    </button>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                                <button onClick={() => toggleTask(task.campaignId, task.id)} className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition-colors ${task.completed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'}`}>
-                                                                    {task.completed ? 'Ferdig' : 'Åpen'}
+                                <button onClick={copyList} className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 shadow-sm">
+                                    <Icon name="copy" size={14}/> Kopier liste
+                                </button>
+                            </div>
+
+                            {/* Tabell */}
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-slate-200">
+                                    <thead className="bg-slate-50">
+                                        <tr>
+                                            <th onClick={() => requestSort('date')} className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider sortable">
+                                                Dato {sortConfig.key === 'date' && (sortConfig.direction === 'ascending' ? '↑' : '↓')}
+                                            </th>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Tid</th>
+                                            <th onClick={() => requestSort('type')} className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider sortable">
+                                                Type {sortConfig.key === 'type' && (sortConfig.direction === 'ascending' ? '↑' : '↓')}
+                                            </th>
+                                            <th onClick={() => requestSort('campaignTitle')} className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider sortable">
+                                                Aktivitet {sortConfig.key === 'campaignTitle' && (sortConfig.direction === 'ascending' ? '↑' : '↓')}
+                                            </th>
+                                            <th onClick={() => requestSort('customTitle')} className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider sortable">
+                                                Beskrivelse {sortConfig.key === 'customTitle' && (sortConfig.direction === 'ascending' ? '↑' : '↓')}
+                                            </th>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Info</th>
+                                            <th onClick={() => requestSort('status')} className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider sortable">
+                                                Status {sortConfig.key === 'status' && (sortConfig.direction === 'ascending' ? '↑' : '↓')}
+                                            </th>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Endre</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-slate-200">
+                                        {filteredAndSortedTasks.length === 0 ? (
+                                            <tr><td colSpan="8" className="px-6 py-12 text-center text-slate-400">Ingen aktiviteter.</td></tr>
+                                        ) : (
+                                            filteredAndSortedTasks.map((t, i) => {
+                                                const conf = TASK_TYPES[t.type] || TASK_TYPES['ADMIN'];
+                                                const isOverdue = !t.completed && new Date(t.date) < new Date(new Date().setHours(0, 0, 0, 0));
+                                                return (
+                                                    <tr key={`${t.id}-${i}`} className="hover:bg-slate-50 group">
+                                                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-slate-900'}`}>{t.date}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{t.time}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <div className="flex items-center gap-2">
+                                                                <Icon name={conf.icon} size={14} color={conf.color.split(' ')[0]} />
+                                                                <span className="text-sm text-slate-700">{conf.label}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 font-bold">{t.campaignTitle}</td>
+                                                        <td className="px-6 py-4 text-sm text-slate-600 max-w-xs truncate" title={t.customTitle}>{t.customTitle || '-'}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                            {t.imageUrl && (
+                                                                <button onClick={() => { setPreviewImage(formatImageUrl(t.imageUrl)); setIsPreviewLocked(true); }} className="text-indigo-500 hover:text-indigo-700">
+                                                                    <Icon name="paperclip" size={16}/>
                                                                 </button>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <button onClick={() => toggleTask(t.campaignId, t.id)} className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition-colors ${t.completed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                                {t.completed ? 'Ferdig' : 'Åpen'}
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <button onClick={() => handleEditClick({ id: t.campaignId, title: t.campaignTitle, date: t.date, tasks: campaigns.find(x => x.id === t.campaignId).tasks })} className="text-slate-400 hover:text-indigo-600">
+                                                                <Icon name="pencil" size={16}/>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            {/* KNAPPERAD LISTEVISNING (Nytt i v3.4 - Alternativ A) */}
+                            <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-4 justify-center">
+                                {Object.entries(TASK_TYPES).map(([k, c]) => (
+                                    <div key={k} className="flex items-center bg-white rounded-full border border-slate-200 shadow-sm overflow-hidden">
+                                        <button onClick={() => handleLegendAdd(k)} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 text-slate-700">
+                                            <Icon name={c.icon} color={c.color.split(' ')[0]} size={14}/>
+                                            <span className="font-medium text-sm">{c.label}</span>
+                                            <Icon name="plus" size={12} className="text-indigo-500"/>
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}
 
+                    {/* FANE 3: ANALYSE */}
                     {activeTab === 'analysis' && (
                         <window.AnalyseDashboard kpiData={kpiData} onAddKpi={handleAddKpi} onDeleteKpi={handleDeleteKpi} />
                     )}
 
                     <footer className="mt-12 py-6 border-t border-slate-200 text-center text-xs text-slate-400">
-                        &copy; 2026 Me & Max AS - Versjon 3.2 | Mike & his friend Gemini
+                        &copy; 2026 Me & Max AS - Versjon 3.4 (Full) | Mike & his friend Gemini
                     </footer>
                 </div>
             );
