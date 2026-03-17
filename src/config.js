@@ -78,6 +78,7 @@ window.COMMERCIAL_DAYS = {
 window.TASK_TYPES = {
     'TRACK1': { label: 'S1-LinkedIn', icon: 'info', color: 'text-pink-600', bg: 'bg-pink-100', defaultTime: '12:00' },
     'TRACK2': { label: 'S2-NewCustomers', icon: 'info', color: 'text-pink-600', bg: 'bg-pink-100', defaultTime: '12:00' },
+    'TRACK3': { label: 'S2-OldContacts', icon: 'info', color: 'text-pink-600', bg: 'bg-pink-100', defaultTime: '12:00' },
     'ADMIN': { label: 'Admin', icon: 'lock', color: 'text-slate-600', bg: 'bg-slate-100', defaultTime: '09:00' },
     'OTHER': { label: 'Annet', icon: 'info', color: 'text-violet-600', bg: 'bg-violet-100', defaultTime: '12:00' },
     'FB_ORG': { label: 'FB Organisk', icon: 'facebook', color: 'text-blue-600', bg: 'bg-blue-100', defaultTime: '10:00' },
