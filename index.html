@@ -473,28 +473,17 @@
 
             if (loading) return <div className="h-screen flex items-center justify-center text-slate-500"><Icon name="loader-2" className="animate-spin" /> Laster...</div>;
 
-            return (
-  <>
-    {/* Den gamle koden din holdes utkommentert */}
-    {/* <div className="max-w-7xl mx-auto p-4 bg-slate-50 min-h-screen"> */}
-    
-    {/* Den nye, overstyrte 1480px-containeren */}
-    <div style={{ maxWidth: '1480px' }} className="w-full mx-auto p-4 bg-slate-50 min-h-screen outline outline-2 outline-red-500 outline-offset-[-2px]">
-      
-      {/* Bilde Preview Modal */}
-      {previewImage && (
-        <div className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm ${isPreviewLocked ? 'pointer-events-auto' : 'pointer-events-none'}`} 
-             onClick={() => { setPreviewImage(null); setIsPreviewLocked(false); }}>
-          <img src={previewImage} className="max-w-4xl max-h-[90vh] object-contain rounded-lg shadow-2xl"/>
-        </div>
-      )} {/* <-- Her stenger modalen. Ingen fragment-avslutning her! */}
+            Her er koden 
 
-      {/* Her fortsetter resten av innholdet / galleriet ditt... */}
-
-    </div> {/* <-- Her stenger den nye 1480px containeren */}
-
-  </> {/* <-- Her stenger fragmentet. Helt til slutt. */}
-);
+return (
+                 <div className="max-w-7xl mx-auto p-4 bg-slate-50 min-h-screen"> 
+                    {/* Bilde Preview Modal */}
+                    {previewImage && (
+                        <div className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm ${isPreviewLocked ? 'pointer-events-auto' : 'pointer-events-none'}`} 
+                             onClick={() => { setPreviewImage(null); setIsPreviewLocked(false); }}>
+                            <img src={previewImage} className="max-w-4xl max-h-[90vh] object-contain rounded-lg shadow-2xl"/>
+                        </div>
+                   )}
 
                     {/* Hoved Modaler (Edit, Add, Delete) */}
                     {modalType && (
