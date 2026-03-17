@@ -17,6 +17,7 @@
     <script type="text/babel" src="src/analyse.js"></script>
 
     <style>
+        .max-width-custom { max-width: 1480px; }
         body { background-color: #f8fafc; font-family: sans-serif; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
@@ -25,7 +26,7 @@
         .btn-hover:active { transform: scale(0.98); }
         .month-checkbox:checked + div { background-color: #e0e7ff; color: #4338ca; font-weight: bold; border-color: #818cf8; }
         th.sortable { cursor: pointer; user-select: none; transition: background-color 0.2s; }
-        th.sortable:hover { background-color: #f1f5f9; }
+        th.sortable:hover { background-color: #f1f5f9; }        
     </style>
 </head>
 <body>
@@ -474,7 +475,7 @@
             if (loading) return <div className="h-screen flex items-center justify-center text-slate-500"><Icon name="loader-2" className="animate-spin" /> Laster...</div>;
 
 return (
-                 <div className="max-w-7xl mx-auto p-4 bg-slate-50 min-h-screen"> 
+                 <div className="max-width-custom mx-auto p-4 bg-slate-50 min-h-screen">
                     {/* Bilde Preview Modal */}
                     {previewImage && (
                         <div className={`fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm ${isPreviewLocked ? 'pointer-events-auto' : 'pointer-events-none'}`} 
