@@ -83,5 +83,5 @@ window.TASK_TYPES = {
     'MEETING': { label: 'Møte', icon: 'briefcase', color: 'text-teal-600', bg: 'bg-teal-100', defaultTime: '10:00' },
     'ADMIN': { label: 'Admin', icon: 'lock', color: 'text-slate-600', bg: 'bg-slate-100', defaultTime: '09:00' },
     'OTHER': { label: 'Annet', icon: 'info', color: 'text-violet-600', bg: 'bg-violet-100', defaultTime: '12:00' },
-    'Track1': { label: 'S1-LinkedIn', icon: 'info', color: 'text-pink-600', bg: 'bg-pink-100', defaultTime: '12:00' }
+    'TRACK1': { label: 'S1-LinkedIn', icon: 'info', color: 'text-pink-600', bg: 'bg-pink-100', defaultTime: '12:00' }
 };
