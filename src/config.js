@@ -77,10 +77,6 @@ window.COMMERCIAL_DAYS = {
 
 window.TASK_TYPES = {
     'TRACK1': { label: 'S1-LinkedIn', icon: 'info', color: 'text-pink-600', bg: 'bg-pink-100', defaultTime: '12:00' },
-    'TRACK2': { label: 'S2-NyeKunder', icon: 'info', color: 'text-blue-600', bg: 'bg-blue-100', defaultTime: '12:00' },
-    'TRACK3': { label: 'S3-Kontakter, icon: 'info', color: 'text-blue-600', bg: 'bg-blue-100', defaultTime: '12:00' },
-    'TRACK4': { label: 'S4-TheContract', icon: 'info', color: 'text-green-600', bg: 'bg-green-100', defaultTime: '12:00' },
-    'MEETING': { label: 'Møte', icon: 'briefcase', color: 'text-teal-600', bg: 'bg-teal-100', defaultTime: '10:00' },
     'ADMIN': { label: 'Admin', icon: 'lock', color: 'text-slate-600', bg: 'bg-slate-100', defaultTime: '09:00' },
     'OTHER': { label: 'Annet', icon: 'info', color: 'text-violet-600', bg: 'bg-violet-100', defaultTime: '12:00' },
     'FB_ORG': { label: 'FB Organisk', icon: 'facebook', color: 'text-blue-600', bg: 'bg-blue-100', defaultTime: '10:00' },
